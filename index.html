@@ -25,8 +25,8 @@
         
         .main-container { display: flex; flex: 1; height: calc(100vh - 55px); width: 100%; }
         
-        .left-panel { width: 65%; height: 100%; position: relative; }
-        #map { width: 100%; height: 100%; background: #e2e8f0; }
+        .left-panel { width: 65%; height: 100%; position: relative; background: #e2e8f0; }
+        #map { width: 100%; height: 100%; }
         
         .right-panel { width: 35%; padding: 15px; border-right: 2px solid #cbd5e1; overflow-y: auto; background: #ffffff; }
         .passenger-card { display: flex; align-items: center; justify-content: space-between; background: #f1f5f9; padding: 12px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #cbd5e1; }
@@ -83,16 +83,22 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // إعداد الخريطة
+    // إعداد الخريطة باستخدام سيرفر سريع جداً ومضمون
     const map = L.map('map').setView([30.0444, 31.2357], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{x}/{y}.png', {
+    
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         maxZoom: 19,
-        attribution: '© OpenStreetMap'
+        subdomains: 'abcd',
+        attribution: '© OpenStreetMap © CARTO'
     }).addTo(map);
 
-    // فرض إعادة ضبط أبعاد الخريطة لمنع الشاشة السوداء
-    setTimeout(() => { map.invalidateSize(); }, 300);
-    window.addEventListener('resize', () => { map.invalidateSize(); });
+    // تكييف أبعاد الخريطة لمنع الظهور الرمادي
+    function fixMap() {
+        setTimeout(() => { map.invalidateSize(); }, 200);
+        setTimeout(() => { map.invalidateSize(); }, 800);
+    }
+    fixMap();
+    window.addEventListener('resize', fixMap);
 
     let markers = {};
     const passengerList = document.getElementById("passengerList");
@@ -127,6 +133,7 @@
                     markers[id] = marker;
                 }
             });
+            fixMap();
         } else {
             pCount.innerText = "0";
         }
