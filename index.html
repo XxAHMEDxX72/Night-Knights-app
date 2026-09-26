@@ -13,11 +13,18 @@
     <!-- QR Code Generator -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; transition: background 0.3s, color 0.3s; }
+        
         body { background: #0f172a; color: #f8fafc; margin: 0; padding: 15px; min-height: 100vh; display: flex; flex-direction: column; }
+        body.light-mode { background: #f1f5f9; color: #0f172a; }
         
         .room-bar { background: #1e293b; border: 1px solid #334155; padding: 10px 15px; border-radius: 12px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+        body.light-mode .room-bar { background: #ffffff; border-color: #cbd5e1; }
         .room-bar input { background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #f8fafc; padding: 6px 10px; font-weight: bold; width: 140px; }
+        body.light-mode .room-bar input { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
+
+        .plate-input { background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #f8fafc; padding: 6px 10px; font-weight: bold; width: 120px; }
+        body.light-mode .plate-input { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
         
         .header-actions { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
         .btn { border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; font-size: 14px; flex: 1; min-width: 140px; }
@@ -25,6 +32,9 @@
         .btn-start { background: #2563eb; }
         .btn-toggle-qr { background: #0284c7; }
         .btn-clear { background: #ef4444; }
+        .btn-optimize { background: #8b5cf6; }
+        .btn-theme { background: #64748b; }
+        .btn-history { background: #d97706; }
         
         .main-layout { display: flex; flex-direction: column; gap: 15px; flex: 1; }
         @media (min-width: 900px) {
@@ -33,18 +43,34 @@
             .trip-active .list-container { flex: 0.8; height: 75vh; overflow-y: auto; }
         }
         .qr-card { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 16px; text-align: center; margin-bottom: 15px; }
+        body.light-mode .qr-card { background: #ffffff; border-color: #cbd5e1; }
         #qrcode { display: flex; justify-content: center; margin: 15px 0; background: white; padding: 12px; border-radius: 12px; }
         #driverMap { height: 350px; width: 100%; border-radius: 16px; border: 1px solid #334155; }
+        body.light-mode #driverMap { border-color: #cbd5e1; }
         
         .passenger-list { display: flex; flex-direction: column; gap: 10px; }
         .passenger-card { background: #1e293b; border: 1px solid #334155; padding: 12px 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+        body.light-mode .passenger-card { background: #ffffff; border-color: #cbd5e1; }
         .passenger-card.active-target { border: 2px solid #22c55e; background: #132e2b; }
+        body.light-mode .passenger-card.active-target { background: #dcfce7; }
         
         .controls { display: flex; gap: 4px; align-items: center; }
         .btn-sm { padding: 5px 8px; border-radius: 6px; border: none; background: #374151; color: white; cursor: pointer; font-size: 12px; }
         .btn-nav { background: #22c55e; color: white; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; }
         
         .leaflet-routing-container { display: none !important; }
+
+        .car-marker-icon {
+            transition: transform 0.8s linear, left 1s linear, top 1s linear;
+        }
+
+        /* Modal Styles for Trip History */
+        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; }
+        .modal-content { background: #1e293b; padding: 20px; border-radius: 16px; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; border: 1px solid #334155; }
+        body.light-mode .modal-content { background: #ffffff; border-color: #cbd5e1; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .history-item { background: #0f172a; border: 1px solid #334155; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; }
+        body.light-mode .history-item { background: #f8fafc; border-color: #cbd5e1; }
     </style>
 </head>
 <body>
@@ -53,12 +79,19 @@
         <span>رمز الرحلة / الغرفة: </span>
         <input type="text" id="roomIdInput" readonly>
     </div>
+    <div>
+        <span>لوحة السيارة: </span>
+        <input type="text" id="carPlateInput" class="plate-input" placeholder="مثال: أ ب ج 1234">
+    </div>
     <button class="btn-sm" style="background:#475569;" onclick="changeRoomId()">🔄 تغيير رمز الغرفة</button>
 </div>
 <div class="header-actions">
     <button class="btn btn-gps" id="gpsBtn" onclick="toggleLiveTracking()">📍 تفعيل التتبع المباشر (GPS)</button>
     <button class="btn btn-start" id="startTripBtn" onclick="toggleTrip()">🚀 بدء الرحلة وعرض الخريطة</button>
+    <button class="btn btn-optimize" onclick="optimizeRoute()">🪄 ترتيب الركاب تلقائيًا</button>
     <button class="btn btn-toggle-qr" onclick="toggleQR()">📱 إظهار / إخفاء الـ QR</button>
+    <button class="btn btn-history" onclick="showTripHistory()">📜 سجل الرحلات</button>
+    <button class="btn btn-theme" onclick="toggleTheme()">🌗 وضع ليلي/نهاري</button>
     <button class="btn btn-clear" onclick="clearAllRides()">🗑️ مسح ركاب هذه الغرفة</button>
 </div>
 <div class="qr-card" id="qrContainer">
@@ -77,6 +110,18 @@
         </div>
     </div>
 </div>
+
+<!-- Modal History -->
+<div class="modal" id="historyModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 style="margin:0;">📜 سجل الرحلات المحفوظة</h3>
+            <button class="btn-sm" style="background:#ef4444;" onclick="closeHistoryModal()">X</button>
+        </div>
+        <div id="historyList"></div>
+    </div>
+</div>
+
 <!-- JS Libraries -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
@@ -114,6 +159,16 @@
     let isTripStarted = false;
     let trackingIntervalId = null;
     let ridesListener = null;
+    let tripStartTime = null;
+
+    // Custom Car Icon
+    const carIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/854/854878.png',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
+        popupAnchor: [0, -20],
+        className: 'car-marker-icon'
+    });
 
     function generateRoomQR() {
         const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html?room=' + encodeURIComponent(currentRoomId);
@@ -135,8 +190,12 @@
     function initMap() {
         if (map) return;
         map = L.map('driverMap').setView([driverLat, driverLng], 14);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        driverMarker = L.marker([driverLat, driverLng]).addTo(map).bindPopup("موقع العربية الحالي").openPopup();
+        
+        const isNight = isNightTime();
+        const tileStyle = isNight ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        L.tileLayer(tileStyle).addTo(map);
+        
+        driverMarker = L.marker([driverLat, driverLng], { icon: carIcon }).addTo(map).bindPopup("موقع السيارة الحالي 🚖").openPopup();
     }
 
     function toggleTrip() {
@@ -146,6 +205,7 @@
         const qrContainer = document.getElementById('qrContainer');
         const btn = document.getElementById('startTripBtn');
         if (isTripStarted) {
+            tripStartTime = new Date();
             qrContainer.style.display = 'none';
             mapWrapper.style.display = 'block';
             layout.classList.add('trip-active');
@@ -156,6 +216,7 @@
             startLiveTracking();
             updateRoute();
         } else {
+            saveTripToHistory();
             qrContainer.style.display = 'block';
             mapWrapper.style.display = 'none';
             layout.classList.remove('trip-active');
@@ -169,12 +230,79 @@
         }
     }
 
+    function saveTripToHistory() {
+        const plateNumber = document.getElementById('carPlateInput').value.trim() || 'غير محدد';
+        const historyData = {
+            roomId: currentRoomId,
+            plateNumber: plateNumber,
+            startTime: tripStartTime ? tripStartTime.toLocaleString('ar-EG') : 'غير معروف',
+            endTime: new Date().toLocaleString('ar-EG'),
+            passengersCount: passengers.length,
+            passengersNames: passengers.map(p => p.name)
+        };
+        let trips = JSON.parse(localStorage.getItem('driver_trip_history') || '[]');
+        trips.unshift(historyData);
+        localStorage.setItem('driver_trip_history', JSON.stringify(trips));
+    }
+
+    function showTripHistory() {
+        const modal = document.getElementById('historyModal');
+        const container = document.getElementById('historyList');
+        let trips = JSON.parse(localStorage.getItem('driver_trip_history') || '[]');
+        container.innerHTML = '';
+        if (trips.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:#64748b;">لا يوجد سجل رحلات سابق</p>';
+        } else {
+            trips.forEach((t, i) => {
+                container.innerHTML += `
+                    <div class="history-item">
+                        <strong>رحلة #${trips.length - i} - ${t.roomId}</strong><br>
+                        🚗 لوحة السيارة: <b>${t.plateNumber}</b><br>
+                        👥 عدد الركاب: ${t.passengersCount} (${t.passengersNames.join(', ')})<br>
+                        ⏱️ البدء: ${t.startTime}<br>
+                        🏁 الانتهاء: ${t.endTime}
+                    </div>
+                `;
+            });
+        }
+        modal.style.display = 'flex';
+    }
+
+    function closeHistoryModal() {
+        document.getElementById('historyModal').style.display = 'none';
+    }
+
     function toggleQR() {
         const qr = document.getElementById('qrContainer');
         qr.style.display = qr.style.display === 'none' ? 'block' : 'none';
     }
 
-    // دالة التحديث الفعلي لموقع السائق
+    // الحركة السلسة للمؤشر Smooth Animation
+    function moveMarkerSmoothly(targetLat, targetLng) {
+        if (!driverMarker) return;
+        const startLatLng = driverMarker.getLatLng();
+        const startLat = startLatLng.lat;
+        const startLng = startLatLng.lng;
+        
+        let startTime = null;
+        const duration = 900; // milliseconds
+
+        function animate(time) {
+            if (!startTime) startTime = time;
+            const progress = Math.min((time - startTime) / duration, 1);
+            const currentLat = startLat + (targetLat - startLat) * progress;
+            const currentLng = startLng + (targetLng - startLng) * progress;
+            
+            driverMarker.setLatLng([currentLat, currentLng]);
+            if (map) map.panTo([currentLat, currentLng]);
+
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            }
+        }
+        requestAnimationFrame(animate);
+    }
+
     function fetchAndUpdatePosition() {
         if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition((pos) => {
@@ -187,8 +315,7 @@
                     timestamp: Date.now()
                 });
 
-                if (driverMarker) driverMarker.setLatLng([driverLat, driverLng]);
-                if (map) map.panTo([driverLat, driverLng]);
+                if (driverMarker) moveMarkerSmoothly(driverLat, driverLng);
                 
                 recalculateDistances();
                 if (isTripStarted) updateRoute();
@@ -198,12 +325,11 @@
         }
     }
 
-    // تفعيل جلب الموقع والتحديث كل ثانية (1000ms)
     function startLiveTracking() {
         if (trackingIntervalId !== null) return;
         
-        fetchAndUpdatePosition(); // تحديث فوري أول ما يشتغل
-        trackingIntervalId = setInterval(fetchAndUpdatePosition, 1000); // تحديث كل ثانية بالضبط
+        fetchAndUpdatePosition();
+        trackingIntervalId = setInterval(fetchAndUpdatePosition, 1000);
         
         const gpsBtn = document.getElementById('gpsBtn');
         if (gpsBtn) {
@@ -244,6 +370,30 @@
             p.distance = calculateDistance(driverLat, driverLng, p.lat, p.lng);
         });
         renderPassengers();
+    }
+
+    function optimizeRoute() {
+        if (passengers.length === 0) return;
+        passengers.sort((a, b) => a.distance - b.distance);
+        renderPassengers();
+        if (isTripStarted) updateRoute();
+    }
+
+    function isNightTime() {
+        const hour = new Date().getHours();
+        return hour < 6 || hour >= 18;
+    }
+
+    function autoApplyTheme() {
+        if (isNightTime()) {
+            document.body.classList.remove('light-mode');
+        } else {
+            document.body.classList.add('light-mode');
+        }
+    }
+
+    function toggleTheme() {
+        document.body.classList.toggle('light-mode');
     }
 
     function listenToRoomRides() {
@@ -331,7 +481,7 @@
             ],
             lineOptions: { styles: [{ color: '#3b82f6', weight: 6 }] },
             createMarker: function(i, wp) {
-                return L.marker(wp.latLng).bindPopup(i === 0 ? "موقع العربية الحقيقي" : `بيت الراكب: ${target.name}`);
+                return L.marker(wp.latLng, { icon: i === 0 ? carIcon : L.Icon.Default.prototype }).bindPopup(i === 0 ? "موقع السيارة الحقيقي" : `بيت الراكب: ${target.name}`);
             }
         }).addTo(map);
     }
@@ -346,6 +496,7 @@
     }
 
     window.onload = () => {
+        autoApplyTheme();
         generateRoomQR();
         listenToRoomRides();
         startLiveTracking();
