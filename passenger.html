@@ -14,8 +14,8 @@
         input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; outline: none; }
         input:focus { border-color: #2563eb; }
         .btn { width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 15px; cursor: pointer; margin-top: 10px; }
-        .btn-location { background: #10b981; margin-bottom: 10px; }
-        .status-msg { margin-top: 8px; font-size: 13px; color: #059669; }
+        .btn:disabled { background: #94a3b8; cursor: not-allowed; }
+        .status-msg { margin-top: 10px; font-size: 13px; color: #0284c7; }
     </style>
 </head>
 <body>
@@ -28,14 +28,12 @@
             <input type="text" id="pName" placeholder="أدخل اسمك" required>
         </div>
         <div class="form-group">
-            <label>رابط موقع المنزل (خرائط جوجل):</label>
-            <input type="text" id="pAddress" placeholder="ضع رابط Google Maps هنا">
+            <label>رابط الموقع (خرائط جوجل):</label>
+            <input type="url" id="pAddress" placeholder="إلصق رابط Google Maps هنا" required>
         </div>
 
-        <button type="button" id="btnGetLocation" class="btn btn-location">📍 تحديد موقعي الحالي تلقائياً</button>
-        <p id="locationStatus" class="status-msg"></p>
-
-        <button type="submit" class="btn">إرسال البيانات للسائق</button>
+        <p id="statusMsg" class="status-msg"></p>
+        <button type="submit" id="submitBtn" class="btn">إرسال البيانات للسائق</button>
     </form>
 </div>
 
@@ -60,71 +58,73 @@
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room');
 
-    let currentLat = null;
-    let currentLng = null;
-
-    document.getElementById("btnGetLocation").onclick = () => {
-        const status = document.getElementById("locationStatus");
-        if (navigator.geolocation) {
-            status.innerText = "جاري تحديد موقعك...";
-            navigator.geolocation.getCurrentPosition((pos) => {
-                currentLat = pos.coords.latitude;
-                currentLng = pos.coords.longitude;
-                status.innerText = "✅ تم تحديد موقعك بنجاح!";
-            }, (err) => {
-                status.innerText = "❌ تعذر تحديد الموقع، يرجى تفعيل الـ GPS.";
-            }, { enableHighAccuracy: true });
-        } else {
-            status.innerText = "❌ المتصفح لا يدعم التحديد التلقائي.";
-        }
-    };
-
-    // استخراج الإحداثيات لو الراكب حط رابط Google Maps يدوي
-    function extractCoordsFromUrl(url) {
+    // دالة استخراج الإحداثيات من النصوص أو الرابط
+    function parseCoords(text) {
         const reg1 = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
         const reg2 = /q=(-?\d+\.\d+),(-?\d+\.\d+)/;
-        const match1 = url.match(reg1);
-        const match2 = url.match(reg2);
-        
-        if (match1) return { lat: parseFloat(match1[1]), lng: parseFloat(match1[2]) };
-        if (match2) return { lat: parseFloat(match2[1]), lng: parseFloat(match2[2]) };
+        const reg3 = /(-?\d+\.\d+),\s*(-?\d+\.\d+)/;
+
+        const m1 = text.match(reg1);
+        if (m1) return { lat: parseFloat(m1[1]), lng: parseFloat(m1[2]) };
+
+        const m2 = text.match(reg2);
+        if (m2) return { lat: parseFloat(m2[1]), lng: parseFloat(m2[2]) };
+
+        const m3 = text.match(reg3);
+        if (m3) return { lat: parseFloat(m3[1]), lng: parseFloat(m3[2]) };
+
         return null;
     }
 
-    document.getElementById("passengerForm").onsubmit = (e) => {
+    // دالة فك الرابط المختصر للوصول للرابط الأصلي الحاوي للإحداثيات
+    async function resolveShortUrl(shortUrl) {
+        let coords = parseCoords(shortUrl);
+        if (coords) return coords;
+
+        try {
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(shortUrl)}`;
+            const response = await fetch(proxyUrl);
+            const finalUrl = response.url;
+            return parseCoords(finalUrl);
+        } catch (e) {
+            console.error("فشل فك الرابط:", e);
+            return null;
+        }
+    }
+
+    document.getElementById("passengerForm").onsubmit = async (e) => {
         e.preventDefault();
         
         if (!roomId) {
-            alert("خطأ: رابط الرحلة غير صحيح أو الرحلة انتهت!");
+            alert("خطأ: رابط الرحلة غير صحيح أو غير موجود!");
             return;
         }
 
-        const name = document.getElementById("pName").value;
-        const address = document.getElementById("pAddress").value;
+        const name = document.getElementById("pName").value.trim();
+        const addressUrl = document.getElementById("pAddress").value.trim();
+        const statusMsg = document.getElementById("statusMsg");
+        const submitBtn = document.getElementById("submitBtn");
 
-        // لو ما داسش على الزرار التلقائي بس حط رابط، نحاول نطلع الموقع من الرابط
-        if (!currentLat && address) {
-            const parsed = extractCoordsFromUrl(address);
-            if (parsed) {
-                currentLat = parsed.lat;
-                currentLng = parsed.lng;
-            }
-        }
+        submitBtn.disabled = true;
+        statusMsg.innerText = "جاري قراءة الرابط واستخراج الموقع...";
+
+        const coords = await resolveShortUrl(addressUrl);
 
         push(ref(db, `rooms/${roomId}/passengers`), {
             name: name,
-            address: address,
-            lat: currentLat,
-            lng: currentLng,
+            address: addressUrl,
+            lat: coords ? coords.lat : null,
+            lng: coords ? coords.lng : null,
             timestamp: Date.now()
         }).then(() => {
             alert("تم إرسال بياناتك بنجاح للسائق!");
             document.getElementById("passengerForm").reset();
-            document.getElementById("locationStatus").innerText = "";
-            currentLat = null;
-            currentLng = null;
+            statusMsg.innerText = "";
+            submitBtn.disabled = false;
         }).catch((err) => {
             alert("حدث خطأ أثناء الإرسال: " + err.message);
+            statusMsg.innerText = "";
+            submitBtn.disabled = false;
         });
     };
 </script>
