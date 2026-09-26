@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل بيانات الرحلة</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f3f4f6; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        h2 { margin-top: 0; color: #1f2937; text-align: center; }
+        label { display: block; margin-top: 15px; font-weight: bold; color: #374151; }
+        input { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; margin-top: 20px; background: #2563eb; color: white; border: none; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        .btn-gps { background: #059669; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="card" id="mainContainer">
+    <h2>تسجيل بيانات الراكب</h2>
+    <form id="passengerForm">
+        <label>الاسم بالكامل:</label>
+        <input type="text" id="pName" placeholder="أدخل اسمك" required>
+
+        <label>رابط موقع المنزل (خرائط جوجل):</label>
+        <input type="url" id="pLocation" placeholder="https://maps.google.com/..." required>
+        
+        <button type="button" class="btn-gps" id="btnGps">📍 تحديد موقعي الحالي تلقائياً</button>
+        <button type="submit">إرسال البيانات للسائق</button>
+    </form>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
