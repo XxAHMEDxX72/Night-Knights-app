@@ -93,8 +93,7 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-
-    // دالة لتوليد رمز غرفة معقد وفريد مستحيل تكراره (حروف كابيتال وسمول وأرقام ورموز + طابع زمني)
+    
     function generateUniqueRoomId() {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
         let randomPart = '';
@@ -105,20 +104,17 @@
         }
         return 'room_' + Date.now().toString(36) + '_' + randomPart;
     }
-
-    // إعداد معرّف الغرفة (Room ID) فريد لكل رحلة
+    
     let currentRoomId = generateUniqueRoomId();
     document.getElementById('roomIdInput').value = currentRoomId;
-
     let driverLat = 30.0444;
     let driverLng = 31.2357;
     let map, routingControl, driverMarker, qrCodeObj;
     let passengers = [];
     let isTripStarted = false;
-    let watchPositionId = null;
+    let trackingIntervalId = null;
     let ridesListener = null;
 
-    // توليد QR موجه للغرفة الحالية مع تشفير الرابط ليدعم الرموز المعقدة
     function generateRoomQR() {
         const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html?room=' + encodeURIComponent(currentRoomId);
         const qrcodeContainer = document.getElementById("qrcode");
@@ -166,8 +162,6 @@
             btn.innerText = '🚀 بدء الرحلة وعرض الخريطة';
             btn.style.background = '#2563eb';
             stopLiveTracking();
-
-            // توليد رمز غرفة جديد وفريد تمامًا للرحلة القادمة عند إنهاء الرحلة
             currentRoomId = generateUniqueRoomId();
             document.getElementById('roomIdInput').value = currentRoomId;
             generateRoomQR();
@@ -180,18 +174,19 @@
         qr.style.display = qr.style.display === 'none' ? 'block' : 'none';
     }
 
-    function startLiveTracking() {
+    // دالة التحديث الفعلي لموقع السائق
+    function fetchAndUpdatePosition() {
         if ("geolocation" in navigator) {
-            if (watchPositionId !== null) return;
-            watchPositionId = navigator.geolocation.watchPosition((pos) => {
+            navigator.geolocation.getCurrentPosition((pos) => {
                 driverLat = pos.coords.latitude;
                 driverLng = pos.coords.longitude;
-                // تحديث موقع السائق الخاص بهذه الغرفة فقط
+                
                 db.ref(`rooms/${currentRoomId}/driver_location`).set({
                     lat: driverLat,
                     lng: driverLng,
                     timestamp: Date.now()
                 });
+
                 if (driverMarker) driverMarker.setLatLng([driverLat, driverLng]);
                 if (map) map.panTo([driverLat, driverLng]);
                 
@@ -200,19 +195,27 @@
             }, (err) => {
                 console.error("خطأ الـ GPS:", err.message);
             }, { enableHighAccuracy: true, maximumAge: 0, timeout: 1000 });
-            
-            const gpsBtn = document.getElementById('gpsBtn');
-            if (gpsBtn) {
-                gpsBtn.innerText = '🟢 التتبع المباشر يعمل';
-                gpsBtn.style.background = '#059669';
-            }
+        }
+    }
+
+    // تفعيل جلب الموقع والتحديث كل ثانية (1000ms)
+    function startLiveTracking() {
+        if (trackingIntervalId !== null) return;
+        
+        fetchAndUpdatePosition(); // تحديث فوري أول ما يشتغل
+        trackingIntervalId = setInterval(fetchAndUpdatePosition, 1000); // تحديث كل ثانية بالضبط
+        
+        const gpsBtn = document.getElementById('gpsBtn');
+        if (gpsBtn) {
+            gpsBtn.innerText = '🟢 التتبع المباشر يعمل';
+            gpsBtn.style.background = '#059669';
         }
     }
 
     function stopLiveTracking() {
-        if (watchPositionId !== null) {
-            navigator.geolocation.clearWatch(watchPositionId);
-            watchPositionId = null;
+        if (trackingIntervalId !== null) {
+            clearInterval(trackingIntervalId);
+            trackingIntervalId = null;
             const gpsBtn = document.getElementById('gpsBtn');
             if (gpsBtn) {
                 gpsBtn.innerText = '📍 تفعيل التتبع المباشر (GPS)';
@@ -222,7 +225,7 @@
     }
 
     function toggleLiveTracking() {
-        if (watchPositionId === null) startLiveTracking();
+        if (trackingIntervalId === null) startLiveTracking();
         else stopLiveTracking();
     }
 
@@ -243,7 +246,6 @@
         renderPassengers();
     }
 
-    // الاستماع لركاب الغرفة المحددة فقط
     function listenToRoomRides() {
         if (ridesListener) db.ref(`rooms/${currentRoomId}/rides`).off('value', ridesListener);
         
