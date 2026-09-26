@@ -3,221 +3,244 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة التحكم - السائق</title>
-    <!-- Leaflet CSS & JS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-    <!-- Leaflet Routing Machine -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
-    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
-
-    <!-- SortableJS -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
-    <!-- QRCode JS -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
+    <title>تحديد موقع الراكب - Ride Pickup</title>
+    
+    <!-- CSS لضبط الشكل وتناسق الخريطة -->
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f8fafc; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        header { background: #1e293b; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 1000; height: 55px; }
-        header h2 { font-size: 18px; }
-        header button { padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
-        
-        .main-container { display: flex; flex: 1; height: calc(100vh - 55px); width: 100%; }
-        
-        .left-panel { width: 65%; height: 100%; position: relative; background: #e2e8f0; }
-        #map { width: 100%; height: 100%; }
-        
-        .right-panel { width: 35%; padding: 15px; border-right: 2px solid #cbd5e1; overflow-y: auto; background: #ffffff; }
-        .passenger-card { display: flex; align-items: center; justify-content: space-between; background: #f1f5f9; padding: 12px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #cbd5e1; }
-        .delete-btn { background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
-        .info-text { font-size: 15px; font-weight: bold; color: #0f172a; }
-        .sub-text { font-size: 12px; color: #2563eb; margin-top: 4px; word-break: break-all; text-decoration: none; display: inline-block; }
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
 
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; z-index: 2000; }
-        .modal-content { background: white; padding: 24px; border-radius: 12px; text-align: center; color: #0f172a; }
+        body {
+            background-color: #f4f7f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
 
-        .leaflet-routing-container { display: none !important; }
+        .card {
+            background: #ffffff;
+            width: 100%;
+            max-width: 480px;
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+        }
 
-        @media (max-width: 768px) {
-            .main-container { flex-direction: column; }
-            .left-panel { width: 100%; height: 50vh; }
-            .right-panel { width: 100%; height: 50vh; border-right: none; border-top: 2px solid #cbd5e1; }
+        h2 {
+            color: #1a1a1a;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 22px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #444;
+            font-size: 14px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1.5px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: #2563eb;
+        }
+
+        /* حاوية الخريطة المصغرة */
+        #map-container {
+            position: relative;
+            width: 100%;
+            height: 280px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1.5px solid #e0e0e0;
+            margin-bottom: 16px;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .coords-box {
+            background-color: #f8fafc;
+            border: 1px dashed #cbd5e1;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #475569;
+            margin-bottom: 20px;
+            text-align: center;
+            direction: ltr;
+        }
+
+        .btn-submit {
+            width: 100%;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .btn-submit:hover {
+            background-color: #1d4ed8;
         }
     </style>
 </head>
 <body>
 
-<header>
-    <h2>لوحة السائق (<span id="roomIdText">...</span>)</h2>
-    <button id="btnQR">عرض QR Code</button>
-</header>
+    <div class="card">
+        <h2>تأكيد موقع أخذ الراكب 🚖</h2>
 
-<div class="main-container">
-    <div class="left-panel">
-        <div id="map"></div>
+        <!-- 1. اسم الراكب -->
+        <div class="form-group">
+            <label for="passengerName">اسم الراكب:</label>
+            <input type="text" id="passengerName" placeholder="اكتب اسمك هنا..." required>
+        </div>
+
+        <!-- 2. البحث عن العنوان -->
+        <div class="form-group">
+            <label for="autocomplete">ابحث عن عنوانك / وجهتك:</label>
+            <input type="text" id="autocomplete" placeholder="مثال: الهرم، الجيزة...">
+        </div>
+
+        <!-- 3. الخريطة المصغرة -->
+        <div id="map-container">
+            <div id="map"></div>
+        </div>
+
+        <!-- عرض الإحداثيات المستخرجة تلقائياً -->
+        <div class="coords-box">
+            <span>الإحداثيات الحالية: </span>
+            <strong id="coordsDisplay">30.0444, 31.2357</strong>
+        </div>
+
+        <!-- 4. زر التأكيد والإرسال -->
+        <button class="btn-submit" onclick="submitBooking()">تأكيد الموقع والإرسال</button>
     </div>
-    <div class="right-panel">
-        <h3 style="margin-bottom: 12px;">قائمة الركاب (<span id="pCount">0</span>)</h3>
-        <div id="passengerList"></div>
-    </div>
-</div>
 
-<div id="qrModal" class="modal">
-    <div class="modal-content">
-        <h3>امسح الـ QR للتسجيل</h3>
-        <div id="qrcode" style="display: flex; justify-content: center; margin: 20px 0;"></div>
-        <button id="btnCloseQR" style="padding: 8px 20px; cursor:pointer; background:#64748b; color:white; border:none; border-radius:6px;">إغلاق</button>
-    </div>
-</div>
+    <!-- استدعاء Google Maps API -->
+    <!-- تنبيه: استبدل YOUR_API_KEY بمفتاح API الخاص بك من Google Cloud -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places&callback=initMap" async defer></script>
 
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getDatabase, ref, onValue, onDisconnect, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+    <script>
+        let map;
+        let marker;
+        let selectedLat = 30.0444; // القاهرة/الجيزة كـ موقع افتراضي
+        let selectedLng = 31.2357;
 
-    const firebaseConfig = {
-        apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
-        authDomain: "black-knights-5c5a8.firebaseapp.com",
-        databaseURL: "https://black-knights-5c5a8-default-rtdb.firebaseio.com",
-        projectId: "black-knights-5c5a8",
-        storageBucket: "black-knights-5c5a8.firebasestorage.app",
-        messagingSenderId: "699141823797",
-        appId: "1:699141823797:web:11768011079d9701f0807c",
-        measurementId: "G-JX743D3NH8"
-    };
+        function initMap() {
+            const initialLocation = { lat: selectedLat, lng: selectedLng };
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-
-    const roomId = 'room_' + Math.random().toString(36).substring(2, 9);
-    document.getElementById("roomIdText").innerText = roomId;
-
-    const roomRef = ref(db, `rooms/${roomId}`);
-    onDisconnect(roomRef).remove();
-
-    const map = L.map('map').setView([30.0444, 31.2357], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap'
-    }).addTo(map);
-
-    let driverLat = null;
-    let driverLng = null;
-    let driverMarker = null;
-    let routingControl = null;
-
-    if (navigator.geolocation) {
-        navigator.geolocation.watchPosition((pos) => {
-            driverLat = pos.coords.latitude;
-            driverLng = pos.coords.longitude;
-
-            if (!driverMarker) {
-                driverMarker = L.marker([driverLat, driverLng]).addTo(map).bindPopup("<b>موقعي (السائق) 🚗</b>").openPopup();
-                map.setView([driverLat, driverLng], 13);
-            } else {
-                driverMarker.setLatLng([driverLat, driverLng]);
-            }
-            updateRoute();
-        }, (err) => {
-            console.log("لم يتم السماح بالوصول للموقع");
-        }, { enableHighAccuracy: true });
-    }
-
-    let markers = {};
-    let passengerCoords = [];
-    const passengerList = document.getElementById("passengerList");
-    const pCount = document.getElementById("pCount");
-
-    const passengersRef = ref(db, `rooms/${roomId}/passengers`);
-    onValue(passengersRef, (snapshot) => {
-        passengerList.innerHTML = "";
-        Object.values(markers).forEach(m => map.removeLayer(m));
-        markers = {};
-        passengerCoords = [];
-
-        const data = snapshot.val();
-        if (data) {
-            const entries = Object.entries(data);
-            pCount.innerText = entries.length;
-
-            entries.forEach(([id, p]) => {
-                const card = document.createElement("div");
-                card.className = "passenger-card";
-                card.innerHTML = `
-                    <div>
-                        <div class="info-text">👤 ${p.name}</div>
-                        <div><a href="${p.address}" target="_blank" class="sub-text">🔗 رابط العنوان</a></div>
-                    </div>
-                    <button class="delete-btn" onclick="deletePassenger('${id}')">حذف</button>
-                `;
-                passengerList.appendChild(card);
-
-                if (p.lat && p.lng) {
-                    const marker = L.marker([p.lat, p.lng]).addTo(map)
-                        .bindPopup(`<b>${p.name}</b>`);
-                    markers[id] = marker;
-                    passengerCoords.push(L.latLng(p.lat, p.lng));
-                }
+            // إنشاء الخريطة المصغرة
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: initialLocation,
+                zoom: 15,
+                disableDefaultUI: true, // إخفاء أزرار التحكم الزائدة لتبسيط الشكل
+                zoomControl: true,
             });
 
-            updateRoute();
-        } else {
-            pCount.innerText = "0";
-            if (routingControl) {
-                map.removeControl(routingControl);
-                routingControl = null;
-            }
+            // إضافة دبوس قابل للسحب (Draggable Marker)
+            marker = new google.maps.Marker({
+                position: initialLocation,
+                map: map,
+                draggable: true,
+                title: "اسحب الدبوس لتحديد باب البيت بالظبط"
+            });
+
+            // ربط شريط البحث بـ Google Places Autocomplete
+            const input = document.getElementById("autocomplete");
+            const autocomplete = new google.maps.places.Autocomplete(input);
+            autocomplete.bindTo("bounds", map);
+
+            // عند اختيار عنوان من قائمة الاقتراحات
+            autocomplete.addListener("place_changed", () => {
+                const place = autocomplete.getPlace();
+                if (!place.geometry || !place.geometry.location) {
+                    alert("لم يتم العثور على تفاصيل لهذا المكان");
+                    return;
+                }
+
+                // تحريك الخريطة والدبوس للمكان المختار
+                if (place.geometry.viewport) {
+                    map.fitBounds(place.geometry.viewport);
+                } else {
+                    map.setCenter(place.geometry.location);
+                    map.setZoom(17);
+                }
+
+                marker.setPosition(place.geometry.location);
+                updateCoordinates(place.geometry.location.lat(), place.geometry.location.lng());
+            });
+
+            // عند تحريك الدبوس باليد على الخريطة
+            marker.addListener("dragend", () => {
+                const position = marker.getPosition();
+                updateCoordinates(position.lat(), position.lng());
+            });
+
+            // عند الضغط في أي مكان على الخريطة
+            map.addListener("click", (e) => {
+                marker.setPosition(e.latLng);
+                updateCoordinates(e.latLng.lat(), e.latLng.lng());
+            });
         }
-    });
 
-    function updateRoute() {
-        if (!driverLat || !driverLng || passengerCoords.length === 0) return;
-
-        const waypoints = [L.latLng(driverLat, driverLng), ...passengerCoords];
-
-        if (routingControl) {
-            map.removeControl(routingControl);
+        // تحديث الإحداثيات في المتغيرات والشاشة
+        function updateCoordinates(lat, lng) {
+            selectedLat = lat;
+            selectedLng = lng;
+            document.getElementById("coordsDisplay").innerText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
         }
 
-        routingControl = L.Routing.control({
-            waypoints: waypoints,
-            routeWhileDragging: false,
-            addWaypoints: false,
-            show: false,
-            lineOptions: {
-                styles: [{ color: '#2563eb', opacity: 0.8, weight: 6 }]
+        // تجميع البيانات وإرسالها كـ الإحداثيات الصريحة
+        function submitBooking() {
+            const passengerName = document.getElementById("passengerName").value.trim();
+
+            if (!passengerName) {
+                alert("برجاء كتابة اسم الراكب أولاً!");
+                return;
             }
-        }).addTo(map);
-    }
 
-    window.deletePassenger = function(id) {
-        remove(ref(db, `rooms/${roomId}/passengers/${id}`));
-    };
+            // كائن البيانات النهائي اللي هيتبعت للسيرفر أو الكابتن
+            const rideData = {
+                passenger_name: passengerName,
+                location: {
+                    latitude: selectedLat,
+                    longitude: selectedLng
+                },
+                timestamp: new Date().toISOString()
+            };
 
-    new Sortable(passengerList, { animation: 150 });
+            console.log("Data to send:", rideData);
 
-    const btnQR = document.getElementById("btnQR");
-    const qrModal = document.getElementById("qrModal");
-    const btnCloseQR = document.getElementById("btnCloseQR");
-
-    btnQR.onclick = () => {
-        const baseUrl = window.location.href.split('index.html')[0].split('?')[0];
-        const passengerUrl = baseUrl + (baseUrl.endsWith('/') ? '' : '/') + `passenger.html?room=${roomId}`;
-
-        document.getElementById("qrcode").innerHTML = "";
-        new QRCode(document.getElementById("qrcode"), {
-            text: passengerUrl,
-            width: 200,
-            height: 200
-        });
-
-        qrModal.style.display = "flex";
-    };
-
-    btnCloseQR.onclick = () => {
-        qrModal.style.display = "none";
-    };
-</script>
+            // عرض النتيجة للراكب
+            alert(`تم تأكيد الطلب بنجاح!\n\nاسم الراكب: ${rideData.passenger_name}\nخط العرض: ${rideData.location.latitude}\nخط الطول: ${rideData.location.longitude}`);
+        }
+    </script>
 </body>
 </html>
