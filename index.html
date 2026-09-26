@@ -3,244 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تحديد موقع الراكب - Ride Pickup</title>
-    
-    <!-- CSS لضبط الشكل وتناسق الخريطة -->
+    <title>لوحة السائق - استلام الطلب</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        * {
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            background-color: #f4f7f6;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .card {
-            background: #ffffff;
-            width: 100%;
-            max-width: 480px;
-            padding: 24px;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
-        }
-
-        h2 {
-            color: #1a1a1a;
-            margin-bottom: 20px;
-            text-align: center;
-            font-size: 22px;
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: #444;
-            font-size: 14px;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 12px 14px;
-            border: 1.5px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 15px;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-
-        input[type="text"]:focus {
-            border-color: #2563eb;
-        }
-
-        /* حاوية الخريطة المصغرة */
-        #map-container {
-            position: relative;
-            width: 100%;
-            height: 280px;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1.5px solid #e0e0e0;
-            margin-bottom: 16px;
-        }
-
-        #map {
-            width: 100%;
-            height: 100%;
-        }
-
-        .coords-box {
-            background-color: #f8fafc;
-            border: 1px dashed #cbd5e1;
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 13px;
-            color: #475569;
-            margin-bottom: 20px;
-            text-align: center;
-            direction: ltr;
-        }
-
-        .btn-submit {
-            width: 100%;
-            background-color: #2563eb;
-            color: white;
-            border: none;
-            padding: 14px;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .btn-submit:hover {
-            background-color: #1d4ed8;
-        }
+        * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+        body { background: #1e293b; color: white; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: #0f172a; padding: 20px; border-radius: 12px; width: 100%; max-width: 400px; text-align: center; border: 1px solid #334155; }
+        #map { height: 300px; border-radius: 8px; margin: 15px 0; }
+        .info { background: #1e293b; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+        .btn-nav { display: block; background: #22c55e; color: white; text-decoration: none; padding: 12px; border-radius: 8px; font-weight: bold; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h2>تأكيد موقع أخذ الراكب 🚖</h2>
-
-        <!-- 1. اسم الراكب -->
-        <div class="form-group">
-            <label for="passengerName">اسم الراكب:</label>
-            <input type="text" id="passengerName" placeholder="اكتب اسمك هنا..." required>
-        </div>
-
-        <!-- 2. البحث عن العنوان -->
-        <div class="form-group">
-            <label for="autocomplete">ابحث عن عنوانك / وجهتك:</label>
-            <input type="text" id="autocomplete" placeholder="مثال: الهرم، الجيزة...">
-        </div>
-
-        <!-- 3. الخريطة المصغرة -->
-        <div id="map-container">
-            <div id="map"></div>
-        </div>
-
-        <!-- عرض الإحداثيات المستخرجة تلقائياً -->
-        <div class="coords-box">
-            <span>الإحداثيات الحالية: </span>
-            <strong id="coordsDisplay">30.0444, 31.2357</strong>
-        </div>
-
-        <!-- 4. زر التأكيد والإرسال -->
-        <button class="btn-submit" onclick="submitBooking()">تأكيد الموقع والإرسال</button>
+<div class="card">
+    <h2>طلب جديد متوفر! 📍</h2>
+    
+    <div class="info">
+        <p><strong>الراكب:</strong> <span id="passengerName">---</span></p>
+        <p style="font-size: 12px; color: #94a3b8;" id="coordsText">---</p>
     </div>
 
-    <!-- استدعاء Google Maps API -->
-    <!-- تنبيه: استبدل YOUR_API_KEY بمفتاح API الخاص بك من Google Cloud -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places&callback=initMap" async defer></script>
+    <div id="map"></div>
 
-    <script>
-        let map;
-        let marker;
-        let selectedLat = 30.0444; // القاهرة/الجيزة كـ موقع افتراضي
-        let selectedLng = 31.2357;
+    <a id="googleMapsBtn" href="#" target="_blank" class="btn-nav">فتح خط السير في Google Maps 🗺️</a>
+</div>
 
-        function initMap() {
-            const initialLocation = { lat: selectedLat, lng: selectedLng };
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // قراءة البيانات المبعوثة من رابط الصفحة
+    const urlParams = new URLSearchParams(window.location.search);
+    const passengerName = urlParams.get('name') || "راكب غير معروف";
+    const lat = parseFloat(urlParams.get('lat')) || 30.0444;
+    const lng = parseFloat(urlParams.get('lng')) || 31.2357;
 
-            // إنشاء الخريطة المصغرة
-            map = new google.maps.Map(document.getElementById("map"), {
-                center: initialLocation,
-                zoom: 15,
-                disableDefaultUI: true, // إخفاء أزرار التحكم الزائدة لتبسيط الشكل
-                zoomControl: true,
-            });
+    // عرض بيانات الراكب
+    document.getElementById('passengerName').innerText = passengerName;
+    document.getElementById('coordsText').innerText = `الإحداثيات: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 
-            // إضافة دبوس قابل للسحب (Draggable Marker)
-            marker = new google.maps.Marker({
-                position: initialLocation,
-                map: map,
-                draggable: true,
-                title: "اسحب الدبوس لتحديد باب البيت بالظبط"
-            });
+    // عرض موقع الراكب للسائق على الخريطة
+    const map = L.map('map').setView([lat, lng], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-            // ربط شريط البحث بـ Google Places Autocomplete
-            const input = document.getElementById("autocomplete");
-            const autocomplete = new google.maps.places.Autocomplete(input);
-            autocomplete.bindTo("bounds", map);
+    // وضع دبوس موقع الراكب
+    L.marker([lat, lng]).addTo(map)
+        .bindPopup(`<b>موقع أخذ ${passengerName}</b>`)
+        .openPopup();
 
-            // عند اختيار عنوان من قائمة الاقتراحات
-            autocomplete.addListener("place_changed", () => {
-                const place = autocomplete.getPlace();
-                if (!place.geometry || !place.geometry.location) {
-                    alert("لم يتم العثور على تفاصيل لهذا المكان");
-                    return;
-                }
+    // تجهيز زرار التوجيه المباشر لخريطة جوجل للسائق
+    const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    document.getElementById('googleMapsBtn').href = gmapsUrl;
+</script>
 
-                // تحريك الخريطة والدبوس للمكان المختار
-                if (place.geometry.viewport) {
-                    map.fitBounds(place.geometry.viewport);
-                } else {
-                    map.setCenter(place.geometry.location);
-                    map.setZoom(17);
-                }
-
-                marker.setPosition(place.geometry.location);
-                updateCoordinates(place.geometry.location.lat(), place.geometry.location.lng());
-            });
-
-            // عند تحريك الدبوس باليد على الخريطة
-            marker.addListener("dragend", () => {
-                const position = marker.getPosition();
-                updateCoordinates(position.lat(), position.lng());
-            });
-
-            // عند الضغط في أي مكان على الخريطة
-            map.addListener("click", (e) => {
-                marker.setPosition(e.latLng);
-                updateCoordinates(e.latLng.lat(), e.latLng.lng());
-            });
-        }
-
-        // تحديث الإحداثيات في المتغيرات والشاشة
-        function updateCoordinates(lat, lng) {
-            selectedLat = lat;
-            selectedLng = lng;
-            document.getElementById("coordsDisplay").innerText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-        }
-
-        // تجميع البيانات وإرسالها كـ الإحداثيات الصريحة
-        function submitBooking() {
-            const passengerName = document.getElementById("passengerName").value.trim();
-
-            if (!passengerName) {
-                alert("برجاء كتابة اسم الراكب أولاً!");
-                return;
-            }
-
-            // كائن البيانات النهائي اللي هيتبعت للسيرفر أو الكابتن
-            const rideData = {
-                passenger_name: passengerName,
-                location: {
-                    latitude: selectedLat,
-                    longitude: selectedLng
-                },
-                timestamp: new Date().toISOString()
-            };
-
-            console.log("Data to send:", rideData);
-
-            // عرض النتيجة للراكب
-            alert(`تم تأكيد الطلب بنجاح!\n\nاسم الراكب: ${rideData.passenger_name}\nخط العرض: ${rideData.location.latitude}\nخط الطول: ${rideData.location.longitude}`);
-        }
-    </script>
 </body>
 </html>

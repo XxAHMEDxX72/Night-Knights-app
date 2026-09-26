@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>طلب رحلة - الراكب</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, sans-serif; }
+        body { background: #f3f4f6; padding: 20px; display: flex; justify-center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: white; padding: 20px; border-radius: 12px; width: 100%; max-width: 400px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        input { width: 100%; padding: 10px; margin: 8px 0 15px; border: 1px solid #ccc; border-radius: 8px; }
+        #map { height: 250px; border-radius: 8px; margin-bottom: 15px; }
+        button { width: 100%; background: #2563eb; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>طلب رحلة جديدة 🚖</h2>
+    
+    <label>اسم الراكب:</label>
+    <input type="text" id="passengerName" placeholder="اكتب اسمك..." required>
+
+    <label>حدد موقعك على الخريطة:</label>
+    <div id="map"></div>
+
+    <button onclick="sendToDriver()">تأكيد وإرسال للكابتن</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // موقع افتراضي (القاهرة / الجيزة)
+    let selectedLat = 30.0444;
+    let selectedLng = 31.2357;
+
+    // تشغيل خريطة Leaflet المجانية (بدون API Key)
+    const map = L.map('map').setView([selectedLat, selectedLng], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    // إضافة دبوس قابل للسحب
+    const marker = L.marker([selectedLat, selectedLng], { draggable: true }).addTo(map);
+
+    marker.on('dragend', function(e) {
+        const coord = marker.getLatLng();
+        selectedLat = coord.lat;
+        selectedLng = coord.lng;
+    });
+
+    map.on('click', function(e) {
+        marker.setLatLng(e.latlng);
+        selectedLat = e.latlng.lat;
+        selectedLng = e.latlng.lng;
+    });
+
+    function sendToDriver() {
+        const name = document.getElementById('passengerName').value.trim();
+        if (!name) { alert('من فضلك اكتب اسمك الأول'); return; }
+
+        // الانتقال لصفحة السائق وإرسال الاسم والإحداثيات كـ Data
+        window.location.href = `driver.html?name=${encodeURIComponent(name)}&lat=${selectedLat}&lng=${selectedLng}`;
+    }
+</script>
+
+</body>
+</html>
