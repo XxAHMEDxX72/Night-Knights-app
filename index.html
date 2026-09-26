@@ -11,10 +11,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <!-- QRCode JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    
-    <!-- Firebase Compat SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -47,7 +43,7 @@
 <body>
 
 <header>
-    <h2>لوحة السائق</h2>
+    <h2>لوحة السائق (<span id="roomIdText">...</span>)</h2>
     <button id="btnQR">عرض QR Code</button>
 </header>
 
@@ -69,7 +65,10 @@
     </div>
 </div>
 
-<script>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, onValue, onDisconnect, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
     const firebaseConfig = {
         apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
         authDomain: "black-knights-5c5a8.firebaseapp.com",
@@ -77,25 +76,30 @@
         projectId: "black-knights-5c5a8",
         storageBucket: "black-knights-5c5a8.firebasestorage.app",
         messagingSenderId: "699141823797",
-        appId: "1:699141823797:web:11768011079d9701f0807c"
+        appId: "1:699141823797:web:11768011079d9701f0807c",
+        measurementId: "G-JX743D3NH8"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-    // إعداد الخريطة باستخدام سيرفر سريع جداً ومضمون
+    // إنشاء رقم رحلة خاص وجديد لهذا السائق
+    const roomId = 'room_' + Math.random().toString(36).substring(2, 9);
+    document.getElementById("roomIdText").innerText = roomId;
+
+    // مسح الرحلة والركاب تلقائياً من الفايربيس عند إغلاق السائق للصفحة
+    const roomRef = ref(db, `rooms/${roomId}`);
+    onDisconnect(roomRef).remove();
+
+    // إعداد الخريطة
     const map = L.map('map').setView([30.0444, 31.2357], 12);
-    
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        subdomains: 'abcd',
-        attribution: '© OpenStreetMap © CARTO'
+        attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    // تكييف أبعاد الخريطة لمنع الظهور الرمادي
     function fixMap() {
-        setTimeout(() => { map.invalidateSize(); }, 200);
-        setTimeout(() => { map.invalidateSize(); }, 800);
+        setTimeout(() => { map.invalidateSize(); }, 300);
     }
     fixMap();
     window.addEventListener('resize', fixMap);
@@ -104,8 +108,9 @@
     const passengerList = document.getElementById("passengerList");
     const pCount = document.getElementById("pCount");
 
-    // الاستماع للركاب من قاعدة البيانات
-    db.ref('passengers').on('value', (snapshot) => {
+    // الاستماع فقط لركاب رحلة هذا السائق
+    const passengersRef = ref(db, `rooms/${roomId}/passengers`);
+    onValue(passengersRef, (snapshot) => {
         passengerList.innerHTML = "";
         Object.values(markers).forEach(m => map.removeLayer(m));
         markers = {};
@@ -140,19 +145,19 @@
     });
 
     window.deletePassenger = function(id) {
-        db.ref('passengers/' + id).remove();
+        remove(ref(db, `rooms/${roomId}/passengers/${id}`));
     };
 
     new Sortable(passengerList, { animation: 150 });
 
-    // الـ QR Modal
+    // توليد الـ QR Code يحتوي على رابط صفحة الركاب مضافاً إليها رقم رحلة هذا السائق
     const btnQR = document.getElementById("btnQR");
     const qrModal = document.getElementById("qrModal");
     const btnCloseQR = document.getElementById("btnCloseQR");
 
     btnQR.onclick = () => {
         const baseUrl = window.location.href.split('index.html')[0].split('?')[0];
-        const passengerUrl = baseUrl + (baseUrl.endsWith('/') ? '' : '/') + 'passenger.html';
+        const passengerUrl = baseUrl + (baseUrl.endsWith('/') ? '' : '/') + `passenger.html?room=${roomId}`;
 
         document.getElementById("qrcode").innerHTML = "";
         new QRCode(document.getElementById("qrcode"), {

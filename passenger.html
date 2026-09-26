@@ -4,10 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تسجيل بيانات الراكب</title>
-    <!-- Firebase Compat SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: system-ui, -apple-system, sans-serif; background-color: #f1f5f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 15px; }
@@ -43,7 +39,10 @@
     </form>
 </div>
 
-<script>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, push } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
     const firebaseConfig = {
         apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
         authDomain: "black-knights-5c5a8.firebaseapp.com",
@@ -51,11 +50,16 @@
         projectId: "black-knights-5c5a8",
         storageBucket: "black-knights-5c5a8.firebasestorage.app",
         messagingSenderId: "699141823797",
-        appId: "1:699141823797:web:11768011079d9701f0807c"
+        appId: "1:699141823797:web:11768011079d9701f0807c",
+        measurementId: "G-JX743D3NH8"
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // قراءة رقم الرحلة من الرابط
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room');
 
     let currentLat = null;
     let currentLng = null;
@@ -78,10 +82,17 @@
 
     document.getElementById("passengerForm").onsubmit = (e) => {
         e.preventDefault();
+        
+        if (!roomId) {
+            alert("خطأ: رابط الرحلة غير صحيح أو الرحلة انتهت!");
+            return;
+        }
+
         const name = document.getElementById("pName").value;
         const address = document.getElementById("pAddress").value;
 
-        db.ref('passengers').push({
+        // إرسال البيانات تحت الرحلة المحددة
+        push(ref(db, `rooms/${roomId}/passengers`), {
             name: name,
             address: address,
             lat: currentLat,
