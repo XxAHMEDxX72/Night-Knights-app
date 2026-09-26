@@ -3,31 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تسجيل بيانات الرحلة</title>
+    <title>تسجيل بيانات الراكب</title>
     <style>
-        body { font-family: system-ui, sans-serif; background: #f3f4f6; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        h2 { margin-top: 0; color: #1f2937; text-align: center; }
-        label { display: block; margin-top: 15px; font-weight: bold; color: #374151; }
-        input { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
-        button { width: 100%; margin-top: 20px; background: #2563eb; color: white; border: none; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 6px; cursor: pointer; }
-        button:hover { background: #1d4ed8; }
-        .btn-gps { background: #059669; margin-top: 10px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; background-color: #f1f5f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 15px; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        h2 { margin-bottom: 20px; color: #1e293b; }
+        .form-group { text-align: right; margin-bottom: 15px; }
+        label { font-size: 14px; font-weight: bold; color: #334155; display: block; margin-bottom: 6px; }
+        input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; outline: none; }
+        input:focus { border-color: #2563eb; }
+        .btn { width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 15px; cursor: pointer; margin-top: 10px; }
+        .btn-location { background: #10b981; margin-bottom: 10px; }
+        .status-msg { margin-top: 10px; font-size: 13px; color: #059669; }
     </style>
 </head>
 <body>
 
-<div class="card" id="mainContainer">
+<div class="card">
     <h2>تسجيل بيانات الراكب</h2>
     <form id="passengerForm">
-        <label>الاسم بالكامل:</label>
-        <input type="text" id="pName" placeholder="أدخل اسمك" required>
+        <div class="form-group">
+            <label>الاسم بالكامل:</label>
+            <input type="text" id="pName" placeholder="أدخل اسمك" required>
+        </div>
+        <div class="form-group">
+            <label>رابط موقع المنزل (خرائط جوجل):</label>
+            <input type="text" id="pAddress" placeholder="أو أدخل الرابط يدويًا">
+        </div>
 
-        <label>رابط موقع المنزل (خرائط جوجل):</label>
-        <input type="url" id="pLocation" placeholder="https://maps.google.com/..." required>
-        
-        <button type="button" class="btn-gps" id="btnGps">📍 تحديد موقعي الحالي تلقائياً</button>
-        <button type="submit">إرسال البيانات للسائق</button>
+        <button type="button" id="btnGetLocation" class="btn btn-location">📍 تحديد موقعي الحالي تلقائياً</button>
+        <p id="locationStatus" class="status-msg"></p>
+
+        <button type="submit" class="btn">إرسال البيانات للسائق</button>
     </form>
 </div>
 
