@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تحديد عنوان المنزل</title>
-    <!-- Firebase JS SDK (v9+ compat) -->
+    <!-- Firebase JS SDK (v9 compat) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <!-- Leaflet CSS -->
@@ -16,13 +16,16 @@
         h2 { text-align: center; margin-top: 0; font-size: 18px; color: #60a5fa; }
         label { display: block; margin: 10px 0 5px; font-size: 13px; color: #9ca3af; }
         input { width: 100%; padding: 11px; background: #374151; border: 1px solid #4b5563; border-radius: 8px; color: white; font-size: 14px; outline: none; }
-        .search-container { display: flex; gap: 6px; margin-bottom: 10px; }
-        .search-container input { margin: 0; flex: 1; }
-        .btn-search { background: #0284c7; color: white; border: none; padding: 0 12px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        
+        /* قائمة اقتراحات البحث */
+        .search-wrapper { position: relative; margin-bottom: 10px; }
+        .suggestions-list { position: absolute; top: 100%; left: 0; right: 0; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; max-height: 180px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); display: none; }
+        .suggestion-item { padding: 10px; border-bottom: 1px solid #374151; font-size: 12px; cursor: pointer; color: #e5e7eb; }
+        .suggestion-item:hover { background: #374151; color: #60a5fa; }
+
         .btn-gps { background: #10b981; color: white; border: none; padding: 9px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 10px; }
-        #map { height: 210px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #4b5563; }
+        #map { height: 220px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #4b5563; }
         .btn-submit { width: 100%; background: #2563eb; color: white; border: none; padding: 13px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; margin-top: 10px; }
-        .btn-submit:hover { background: #1d4ed8; }
     </style>
 </head>
 <body>
@@ -33,10 +36,10 @@
     <label>اسم الراكب:</label>
     <input type="text" id="passengerName" placeholder="اكتب اسمك..." required>
 
-    <label>ابحث عن الشارع / المنطقة:</label>
-    <div class="search-container">
-        <input type="text" id="searchInput" placeholder="مثال: شارع الهرم، الجيزة">
-        <button class="btn-search" onclick="searchAddress()">بحث</button>
+    <label>ابحث عن الشارع / منطقة / محطة (في مصر):</label>
+    <div class="search-wrapper">
+        <input type="text" id="searchInput" placeholder="مثال: محطة مترو فيصل..." oninput="handleSearchInput()">
+        <div class="suggestions-list" id="suggestionsList"></div>
     </div>
 
     <button class="btn-gps" onclick="getCurrentLocation()">📍 تحديث موقعي الحالي بالـ GPS</button>
@@ -50,7 +53,6 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-    // إعدادات مشروع Firebase الخاص بك
     const firebaseConfig = {
         apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
         authDomain: "black-knights-5c5a8.firebaseapp.com",
@@ -67,6 +69,7 @@
 
     let lat = 30.0444;
     let lng = 31.2357;
+    let searchTimeout = null;
 
     const map = L.map('map').setView([lat, lng], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
@@ -93,28 +96,50 @@
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition((pos) => {
                 updateMarker(pos.coords.latitude, pos.coords.longitude);
-            }, () => {
-                alert('تعذر تحديد موقعك تلقائياً، يمكنك البحث في الخانة المخصصة.');
             });
         }
     }
 
     window.onload = getCurrentLocation;
 
-    async function searchAddress() {
+    // 🔍 محرك البحث والاقتراحات مقيد بمصر فقط (countrycodes=eg)
+    function handleSearchInput() {
+        clearTimeout(searchTimeout);
         const query = document.getElementById('searchInput').value.trim();
-        if (!query) return;
-        try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
-            const data = await res.json();
-            if (data && data.length > 0) {
-                updateMarker(parseFloat(data[0].lat), parseFloat(data[0].lon));
-            } else {
-                alert('لم يتم العثور على نتائج، حاول البحث باسم الشارع أو المنطقة.');
-            }
-        } catch (e) {
-            alert('حدث خطأ أثناء البحث.');
+        const list = document.getElementById('suggestionsList');
+
+        if (query.length < 3) {
+            list.style.display = 'none';
+            return;
         }
+
+        // إرسال الطلب بعد توقف الكتابة بـ 300 مللي ثانية
+        searchTimeout = setTimeout(async () => {
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=eg&q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+
+                list.innerHTML = '';
+                if (data && data.length > 0) {
+                    list.style.display = 'block';
+                    data.slice(0, 5).forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item';
+                        div.innerText = item.display_name;
+                        div.onclick = () => {
+                            updateMarker(parseFloat(item.lat), parseFloat(item.lon));
+                            document.getElementById('searchInput').value = item.display_name.split(',')[0];
+                            list.style.display = 'none';
+                        };
+                        list.appendChild(div);
+                    });
+                } else {
+                    list.style.display = 'none';
+                }
+            } catch (e) {
+                list.style.display = 'none';
+            }
+        }, 300);
     }
 
     function sendHouseLocation() {
@@ -124,7 +149,6 @@
             return;
         }
 
-        // إرسال البيانات لقاعدة بيانات الفايربيس
         db.ref('rides').push({
             name: name,
             lat: lat,
@@ -134,7 +158,7 @@
             if (!err) {
                 alert('تم إرسال عنوان بيتك للسائق بنجاح!');
             } else {
-                alert('حدث خطأ في الاتصال، يرجى المحاولة مرة أخرى.');
+                alert('حدث خطأ في الاتصال.');
             }
         });
     }

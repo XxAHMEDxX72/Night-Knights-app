@@ -4,45 +4,84 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>شاشة السائق - خط سير التوصيل</title>
-    <!-- Firebase JS SDK (v9+ compat) -->
+    <!-- Firebase JS SDK (v9 compat) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <!-- Leaflet CSS & Routing Machine -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
     <!-- QR Code Generator -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-        body { background: #0f172a; color: #f8fafc; margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
-        .container { width: 100%; max-width: 480px; }
-        .card { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 16px; text-align: center; margin-bottom: 20px; }
+        body { background: #0f172a; color: #f8fafc; margin: 0; padding: 15px; min-height: 100vh; display: flex; flex-direction: column; }
+        
+        .header-actions { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        .btn { border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; font-size: 14px; flex: 1; min-width: 140px; }
+        .btn-gps { background: #10b981; }
+        .btn-start { background: #2563eb; }
+        .btn-toggle-qr { background: #0284c7; }
+        .btn-clear { background: #ef4444; }
+
+        /* تقسيم الشاشة عند بدء الرحلة */
+        .main-layout { display: flex; flex-direction: column; gap: 15px; flex: 1; }
+        @media (min-width: 900px) {
+            .main-layout.trip-active { flex-direction: row-reverse; }
+            .trip-active .map-container { flex: 1.2; height: 75vh; }
+            .trip-active .list-container { flex: 0.8; height: 75vh; overflow-y: auto; }
+        }
+
+        .qr-card { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 16px; text-align: center; margin-bottom: 15px; }
         #qrcode { display: flex; justify-content: center; margin: 15px 0; background: white; padding: 12px; border-radius: 12px; }
-        .btn-gps { background: #10b981; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 10px; font-size: 14px; }
+
+        #driverMap { height: 350px; width: 100%; border-radius: 16px; border: 1px solid #334155; }
+        
         .passenger-list { display: flex; flex-direction: column; gap: 10px; }
-        .passenger-card { background: #1e293b; border: 1px solid #334155; padding: 14px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
-        .badge { background: #0284c7; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
-        .btn-nav { background: #22c55e; color: white; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: bold; }
-        .clear-btn { background: #ef4444; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 15px; }
+        .passenger-card { background: #1e293b; border: 1px solid #334155; padding: 12px 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .passenger-card.active-target { border: 2px solid #22c55e; background: #132e2b; }
+        
+        .controls { display: flex; gap: 4px; align-items: center; }
+        .btn-sm { padding: 5px 8px; border-radius: 6px; border: none; background: #374151; color: white; cursor: pointer; font-size: 12px; }
+        .btn-nav { background: #22c55e; color: white; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; }
+        .badge { background: #0284c7; color: white; padding: 3px 8px; border-radius: 10px; font-size: 11px; }
+        
+        /* إخفاء إرشادات الطريق النصية التلقائية للخريطة للتبسيط */
+        .leaflet-routing-container { display: none !important; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="card">
-        <h2>امسح الـ QR لتحديد عنوان البيت 📲</h2>
-        <div id="qrcode"></div>
-        <p style="font-size: 12px; color: #94a3b8;">خلّي الركاب يمسحوا الكود ويكتبوا أسمائهم وعناوينهم</p>
+<div class="header-actions">
+    <button class="btn btn-gps" onclick="updateDriverLocation()">📍 تحديث موقع العربية الحالي</button>
+    <button class="btn btn-start" id="startTripBtn" onclick="toggleTrip()">🚀 بدء الرحلة وعرض الخريطة</button>
+    <button class="btn btn-toggle-qr" onclick="toggleQR()">📱 إظهار / إخفاء الـ QR</button>
+    <button class="btn btn-clear" onclick="clearAllRides()">🗑️ مسح رحلات اليوم</button>
+</div>
+
+<div class="qr-card" id="qrContainer">
+    <h2>امسح الـ QR لتحديد عنوان البيت 📲</h2>
+    <div id="qrcode"></div>
+    <p style="font-size: 12px; color: #94a3b8;">خّلّي الركاب يمسحوا الكود ويكتبوا أسمائهم وعناوينهم</p>
+</div>
+
+<div class="main-layout" id="mainLayout">
+    <div class="map-container" id="mapWrapper" style="display: none;">
+        <div id="driverMap"></div>
     </div>
 
-    <button class="btn-gps" onclick="updateDriverLocation()">📍 تحديث موقع العربية الحالي (بداية الخط)</button>
-    <button class="clear-btn" onclick="clearAllRides()">🗑️ مسح جميع الطلبات / بداية دورة جديدة</button>
-
-    <h3>خط سير التوصيل (من الأقرب للأبعد) 🚖</h3>
-    <div id="passengersList" class="passenger-list">
-        <p style="text-align: center; color: #64748b;">في انتظار تسجيل الركاب لعناوينهم...</p>
+    <div class="list-container">
+        <h3 style="margin-top:0;">خط سير التوصيل 🚖</h3>
+        <div id="passengersList" class="passenger-list">
+            <p style="text-align: center; color: #64748b;">في انتظار تسجيل الركاب لعناوينهم...</p>
+        </div>
     </div>
 </div>
 
+<!-- JS Libraries -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
+
 <script>
-    // إعدادات مشروع Firebase الخاص بك
     const firebaseConfig = {
         apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
         authDomain: "black-knights-5c5a8.firebaseapp.com",
@@ -57,32 +96,68 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    let driverLat = 30.0444; // موقع افتراضي (الجيزة / القاهرة)
+    let driverLat = 30.0444; // افتراضي القاهرة / الجيزة
     let driverLng = 31.2357;
+    let map, routingControl, driverMarker;
+    let passengers = [];
+    let isTripStarted = false;
 
-    // 1. توليد الـ QR Code الخاص بصفحة الراكب تلقائياً
+    // 1. توليد الـ QR
     const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html';
-    new QRCode(document.getElementById("qrcode"), {
-        text: passengerPageUrl,
-        width: 160,
-        height: 160
-    });
+    new QRCode(document.getElementById("qrcode"), { text: passengerPageUrl, width: 150, height: 150 });
 
-    // 2. جلب موقع العربية الحالي عبر الـ GPS
+    // 2. تهيئة الخريطة
+    function initMap() {
+        if (map) return;
+        map = L.map('driverMap').setView([driverLat, driverLng], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        driverMarker = L.marker([driverLat, driverLng]).addTo(map).bindPopup("موقع العربية الحالي").openPopup();
+    }
+
+    // 3. زر بدء/إنهاء الرحلة
+    function toggleTrip() {
+        isTripStarted = !isTripStarted;
+        const layout = document.getElementById('mainLayout');
+        const mapWrapper = document.getElementById('mapWrapper');
+        const qrContainer = document.getElementById('qrContainer');
+        const btn = document.getElementById('startTripBtn');
+
+        if (isTripStarted) {
+            qrContainer.style.display = 'none';
+            mapWrapper.style.display = 'block';
+            layout.classList.add('trip-active');
+            btn.innerText = '🏁 إنهاء الرحلة';
+            btn.style.background = '#d97706';
+            initMap();
+            setTimeout(() => { map.invalidateSize(); }, 300);
+            updateRoute();
+        } else {
+            qrContainer.style.display = 'block';
+            mapWrapper.style.display = 'none';
+            layout.classList.remove('trip-active');
+            btn.innerText = '🚀 بدء الرحلة وعرض الخريطة';
+            btn.style.background = '#2563eb';
+        }
+    }
+
+    function toggleQR() {
+        const qr = document.getElementById('qrContainer');
+        qr.style.display = qr.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // 4. تحديث موقع العربية الحالي
     function updateDriverLocation() {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition((pos) => {
                 driverLat = pos.coords.latitude;
                 driverLng = pos.coords.longitude;
-                alert('تم تحديث موقع العربية الحالي بنجاح!');
-                loadAndSortRides();
-            }, () => {
-                alert('تعذر جلب موقع الـ GPS، يرجى تفعيل الموقع على الموبايل.');
+                if (driverMarker) driverMarker.setLatLng([driverLat, driverLng]);
+                if (map) map.setView([driverLat, driverLng], 14);
+                updateRoute();
             });
         }
     }
 
-    // 3. حساب المسافة بين مكان السائق وبيوت الركاب (Haversine Formula)
     function calculateDistance(lat1, lon1, lat2, lon2) {
         const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -93,56 +168,117 @@
         return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
     }
 
-    // 4. الاستماع المباشر لبيانات الركاب وترتيب القائمة
-    function loadAndSortRides() {
-        db.ref('rides').on('value', (snapshot) => {
-            const data = snapshot.val();
-            const listElement = document.getElementById('passengersList');
-            listElement.innerHTML = '';
+    // 5. الاستماع للركاب من قاعدة البيانات
+    db.ref('rides').on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (!data) {
+            passengers = [];
+            renderPassengers();
+            return;
+        }
 
-            if (!data) {
-                listElement.innerHTML = '<p style="text-align: center; color: #64748b;">لا توجد عناوين مسجلة حتى الآن</p>';
-                return;
-            }
+        let newPassengers = [];
+        for (let id in data) {
+            const p = data[id];
+            const dist = calculateDistance(driverLat, driverLng, p.lat, p.lng);
+            newPassengers.push({ ...p, id, distance: dist });
+        }
 
-            let passengers = [];
-            for (let id in data) {
-                const p = data[id];
-                const dist = calculateDistance(driverLat, driverLng, p.lat, p.lng);
-                passengers.push({ ...p, id, distance: dist });
-            }
-
-            // ترتيب القائمة من الأقرب إلى الأبعد
-            passengers.sort((a, b) => a.distance - b.distance);
-
-            passengers.forEach((p, index) => {
-                const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
-                listElement.innerHTML += `
-                    <div class="passenger-card">
-                        <div>
-                            <strong>#${index + 1} - ${p.name}</strong>
-                            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">البيت يبعد: ${p.distance.toFixed(2)} كم</div>
-                        </div>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <span class="badge">${p.distance.toFixed(1)} كم</span>
-                            <a href="${gmapsUrl}" target="_blank" class="btn-nav">وصل للبيت 🗺️</a>
-                        </div>
-                    </div>
-                `;
+        // إذا كانت رحلة جديدة، رتبهم تلقائياً حسب الأقرب
+        if (passengers.length === 0) {
+            newPassengers.sort((a, b) => a.distance - b.distance);
+            passengers = newPassengers;
+        } else {
+            // المحافظة على الترتيب اليدوي وإضافة الركاب الجدد فقط
+            const existingIds = passengers.map(p => p.id);
+            newPassengers.forEach(np => {
+                if (!existingIds.includes(np.id)) passengers.push(np);
             });
+        }
+
+        renderPassengers();
+        if (isTripStarted) updateRoute();
+    });
+
+    // 6. عرض قائمة الركاب
+    function renderPassengers() {
+        const listElement = document.getElementById('passengersList');
+        listElement.innerHTML = '';
+
+        if (passengers.length === 0) {
+            listElement.innerHTML = '<p style="text-align: center; color: #64748b;">لا توجد عناوين مسجلة</p>';
+            return;
+        }
+
+        passengers.forEach((p, index) => {
+            const isFirst = index === 0 && isTripStarted;
+            const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
+
+            listElement.innerHTML += `
+                <div class="passenger-card ${isFirst ? 'active-target' : ''}">
+                    <div>
+                        <strong>#${index + 1} - ${p.name} ${isFirst ? '🎯 (الهدف الحالي)' : ''}</strong>
+                        <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">البيت يبعد: ${p.distance.toFixed(2)} كم</div>
+                    </div>
+                    <div class="controls">
+                        <button class="btn-sm" onclick="movePassenger(${index}, -1)">⬆️</button>
+                        <button class="btn-sm" onclick="movePassenger(${index}, 1)">⬇️</button>
+                        <button class="btn-sm" style="background:#ef4444;" onclick="deletePassenger('${p.id}')">🗑️</button>
+                        <a href="${gmapsUrl}" target="_blank" class="btn-nav">Google Maps</a>
+                    </div>
+                </div>
+            `;
         });
     }
 
+    // 7. تغيير ترتيب الركاب يدوياً
+    function movePassenger(index, direction) {
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= passengers.length) return;
+        const temp = passengers[index];
+        passengers[index] = passengers[newIndex];
+        passengers[newIndex] = temp;
+        renderPassengers();
+        if (isTripStarted) updateRoute();
+    }
+
+    function deletePassenger(id) {
+        db.ref('rides/' + id).remove();
+        passengers = passengers.filter(p => p.id !== id);
+        renderPassengers();
+        if (isTripStarted) updateRoute();
+    }
+
+    // 8. رسم خط السير لأقرب راكب على الخريطة
+    function updateRoute() {
+        if (!map || passengers.length === 0) return;
+
+        const target = passengers[0]; // الراكب الأول في القائمة
+
+        if (routingControl) map.removeControl(routingControl);
+
+        routingControl = L.Routing.control({
+            waypoints: [
+                L.latLng(driverLat, driverLng),
+                L.latLng(target.lat, target.lng)
+            ],
+            lineOptions: { styles: [{ color: '#3b82f6', weight: 6 }] },
+            createMarker: function(i, wp) {
+                return L.marker(wp.latLng).bindPopup(i === 0 ? "موقع العربية" : `بيت الراكب: ${target.name}`);
+            }
+        }).addTo(map);
+    }
+
     function clearAllRides() {
-        if(confirm('هل تريد مسح قائمة الركاب وبدء رحلة جديدة؟')) {
+        if(confirm('هل تريد مسح جميع الركاب؟')) {
             db.ref('rides').remove();
+            passengers = [];
+            if (routingControl) map.removeControl(routingControl);
+            renderPassengers();
         }
     }
 
-    window.onload = () => {
-        updateDriverLocation();
-        loadAndSortRides();
-    };
+    window.onload = updateDriverLocation;
 </script>
 
 </body>
