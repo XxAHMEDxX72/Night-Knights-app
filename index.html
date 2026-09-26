@@ -22,7 +22,6 @@
         .btn-start { background: #2563eb; }
         .btn-toggle-qr { background: #0284c7; }
         .btn-clear { background: #ef4444; }
-
         /* تقسيم الشاشة عند بدء الرحلة */
         .main-layout { display: flex; flex-direction: column; gap: 15px; flex: 1; }
         @media (min-width: 900px) {
@@ -30,10 +29,8 @@
             .trip-active .map-container { flex: 1.2; height: 75vh; }
             .trip-active .list-container { flex: 0.8; height: 75vh; overflow-y: auto; }
         }
-
         .qr-card { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 16px; text-align: center; margin-bottom: 15px; }
         #qrcode { display: flex; justify-content: center; margin: 15px 0; background: white; padding: 12px; border-radius: 12px; }
-
         #driverMap { height: 350px; width: 100%; border-radius: 16px; border: 1px solid #334155; }
         
         .passenger-list { display: flex; flex-direction: column; gap: 10px; }
@@ -50,25 +47,21 @@
     </style>
 </head>
 <body>
-
 <div class="header-actions">
-    <button class="btn btn-gps" onclick="updateDriverLocation()">📍 تحديث موقع العربية الحالي</button>
+    <button class="btn btn-gps" id="gpsBtn" onclick="toggleLiveTracking()">📍 تفعيل التتبع المباشر (GPS)</button>
     <button class="btn btn-start" id="startTripBtn" onclick="toggleTrip()">🚀 بدء الرحلة وعرض الخريطة</button>
     <button class="btn btn-toggle-qr" onclick="toggleQR()">📱 إظهار / إخفاء الـ QR</button>
     <button class="btn btn-clear" onclick="clearAllRides()">🗑️ مسح رحلات اليوم</button>
 </div>
-
 <div class="qr-card" id="qrContainer">
     <h2>امسح الـ QR لتحديد عنوان البيت 📲</h2>
     <div id="qrcode"></div>
     <p style="font-size: 12px; color: #94a3b8;">خّلّي الركاب يمسحوا الكود ويكتبوا أسمائهم وعناوينهم</p>
 </div>
-
 <div class="main-layout" id="mainLayout">
     <div class="map-container" id="mapWrapper" style="display: none;">
         <div id="driverMap"></div>
     </div>
-
     <div class="list-container">
         <h3 style="margin-top:0;">خط سير التوصيل 🚖</h3>
         <div id="passengersList" class="passenger-list">
@@ -76,11 +69,9 @@
         </div>
     </div>
 </div>
-
 <!-- JS Libraries -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
-
 <script>
     const firebaseConfig = {
         apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
@@ -92,15 +83,14 @@
         appId: "1:699141823797:web:11768011079d9701f0807c",
         measurementId: "G-JX743D3NH8"
     };
-
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-
     let driverLat = 30.0444; // افتراضي القاهرة / الجيزة
     let driverLng = 31.2357;
     let map, routingControl, driverMarker;
     let passengers = [];
     let isTripStarted = false;
+    let watchPositionId = null;
 
     // 1. توليد الـ QR
     const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html';
@@ -109,7 +99,7 @@
     // 2. تهيئة الخريطة
     function initMap() {
         if (map) return;
-        map = L.map('driverMap').setView([driverLat, driverLng], 13);
+        map = L.map('driverMap').setView([driverLat, driverLng], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         driverMarker = L.marker([driverLat, driverLng]).addTo(map).bindPopup("موقع العربية الحالي").openPopup();
     }
@@ -121,7 +111,6 @@
         const mapWrapper = document.getElementById('mapWrapper');
         const qrContainer = document.getElementById('qrContainer');
         const btn = document.getElementById('startTripBtn');
-
         if (isTripStarted) {
             qrContainer.style.display = 'none';
             mapWrapper.style.display = 'block';
@@ -130,6 +119,7 @@
             btn.style.background = '#d97706';
             initMap();
             setTimeout(() => { map.invalidateSize(); }, 300);
+            startLiveTracking(); // تفعيل التتبع التلقائي عند بدء الرحلة
             updateRoute();
         } else {
             qrContainer.style.display = 'block';
@@ -137,6 +127,7 @@
             layout.classList.remove('trip-active');
             btn.innerText = '🚀 بدء الرحلة وعرض الخريطة';
             btn.style.background = '#2563eb';
+            stopLiveTracking();
         }
     }
 
@@ -145,17 +136,66 @@
         qr.style.display = qr.style.display === 'none' ? 'block' : 'none';
     }
 
-    // 4. تحديث موقع العربية الحالي
-    function updateDriverLocation() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition((pos) => {
+    // 4. التتبع المباشر (Live GPS Tracking) للسائق وإرساله إلى Firebase
+    function startLiveTracking() {
+        if ("geolocation" in navigator) {
+            if (watchPositionId !== null) return;
+            watchPositionId = navigator.geolocation.watchPosition((pos) => {
                 driverLat = pos.coords.latitude;
                 driverLng = pos.coords.longitude;
+
+                // إرسال موقع العربية المباشر إلى Firebase ليتسنى للجميع التتبع
+                db.ref('driver_location').set({
+                    lat: driverLat,
+                    lng: driverLng,
+                    timestamp: Date.now()
+                });
+
+                // تحديث مكان السيارة والمكان على الخريطة
                 if (driverMarker) driverMarker.setLatLng([driverLat, driverLng]);
-                if (map) map.setView([driverLat, driverLng], 14);
-                updateRoute();
+                if (map) map.panTo([driverLat, driverLng]);
+                
+                // إعادة قياس المسافات وتحديث خط السير فورياً
+                recalculateDistances();
+                if (isTripStarted) updateRoute();
+            }, (err) => {
+                console.error("خطأ في جلب موقع الـ GPS:", err.message);
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 10000
             });
+            
+            const gpsBtn = document.getElementById('gpsBtn');
+            if (gpsBtn) {
+                gpsBtn.innerText = '🟢 التتبع المباشر يعمل';
+                gpsBtn.style.background = '#059669';
+            }
         }
+    }
+
+    function stopLiveTracking() {
+        if (watchPositionId !== null) {
+            navigator.geolocation.clearWatch(watchPositionId);
+            watchPositionId = null;
+            const gpsBtn = document.getElementById('gpsBtn');
+            if (gpsBtn) {
+                gpsBtn.innerText = '📍 تفعيل التتبع المباشر (GPS)';
+                gpsBtn.style.background = '#10b981';
+            }
+        }
+    }
+
+    function toggleLiveTracking() {
+        if (watchPositionId === null) {
+            startLiveTracking();
+        } else {
+            stopLiveTracking();
+        }
+    }
+
+    function updateDriverLocation() {
+        startLiveTracking();
     }
 
     function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -168,6 +208,13 @@
         return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
     }
 
+    function recalculateDistances() {
+        passengers.forEach(p => {
+            p.distance = calculateDistance(driverLat, driverLng, p.lat, p.lng);
+        });
+        renderPassengers();
+    }
+
     // 5. الاستماع للركاب من قاعدة البيانات
     db.ref('rides').on('value', (snapshot) => {
         const data = snapshot.val();
@@ -176,14 +223,12 @@
             renderPassengers();
             return;
         }
-
         let newPassengers = [];
         for (let id in data) {
             const p = data[id];
             const dist = calculateDistance(driverLat, driverLng, p.lat, p.lng);
             newPassengers.push({ ...p, id, distance: dist });
         }
-
         // إذا كانت رحلة جديدة، رتبهم تلقائياً حسب الأقرب
         if (passengers.length === 0) {
             newPassengers.sort((a, b) => a.distance - b.distance);
@@ -195,7 +240,6 @@
                 if (!existingIds.includes(np.id)) passengers.push(np);
             });
         }
-
         renderPassengers();
         if (isTripStarted) updateRoute();
     });
@@ -204,16 +248,13 @@
     function renderPassengers() {
         const listElement = document.getElementById('passengersList');
         listElement.innerHTML = '';
-
         if (passengers.length === 0) {
             listElement.innerHTML = '<p style="text-align: center; color: #64748b;">لا توجد عناوين مسجلة</p>';
             return;
         }
-
         passengers.forEach((p, index) => {
             const isFirst = index === 0 && isTripStarted;
             const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
-
             listElement.innerHTML += `
                 <div class="passenger-card ${isFirst ? 'active-target' : ''}">
                     <div>
@@ -249,14 +290,11 @@
         if (isTripStarted) updateRoute();
     }
 
-    // 8. رسم خط السير لأقرب راكب على الخريطة
+    // 8. رسم خط السير لأقرب راكب على الخريطة وتحديثه
     function updateRoute() {
         if (!map || passengers.length === 0) return;
-
         const target = passengers[0]; // الراكب الأول في القائمة
-
         if (routingControl) map.removeControl(routingControl);
-
         routingControl = L.Routing.control({
             waypoints: [
                 L.latLng(driverLat, driverLng),
@@ -264,7 +302,7 @@
             ],
             lineOptions: { styles: [{ color: '#3b82f6', weight: 6 }] },
             createMarker: function(i, wp) {
-                return L.marker(wp.latLng).bindPopup(i === 0 ? "موقع العربية" : `بيت الراكب: ${target.name}`);
+                return L.marker(wp.latLng).bindPopup(i === 0 ? "موقع العربية الحقيقي" : `بيت الراكب: ${target.name}`);
             }
         }).addTo(map);
     }
@@ -278,8 +316,7 @@
         }
     }
 
-    window.onload = updateDriverLocation;
+    window.onload = startLiveTracking;
 </script>
-
 </body>
 </html>

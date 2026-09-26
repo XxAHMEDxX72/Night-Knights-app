@@ -22,36 +22,27 @@
         .suggestions-list { position: absolute; top: 100%; left: 0; right: 0; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; max-height: 180px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); display: none; }
         .suggestion-item { padding: 10px; border-bottom: 1px solid #374151; font-size: 12px; cursor: pointer; color: #e5e7eb; }
         .suggestion-item:hover { background: #374151; color: #60a5fa; }
-
         .btn-gps { background: #10b981; color: white; border: none; padding: 9px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 10px; }
         #map { height: 220px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #4b5563; }
         .btn-submit { width: 100%; background: #2563eb; color: white; border: none; padding: 13px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; margin-top: 10px; }
     </style>
 </head>
 <body>
-
 <div class="card">
     <h2>حدد عنوان بيتك للنزول 🏠</h2>
-
     <label>اسم الراكب:</label>
     <input type="text" id="passengerName" placeholder="اكتب اسمك..." required>
-
     <label>ابحث عن الشارع / منطقة / محطة (في مصر):</label>
     <div class="search-wrapper">
         <input type="text" id="searchInput" placeholder="مثال: محطة مترو فيصل..." oninput="handleSearchInput()">
         <div class="suggestions-list" id="suggestionsList"></div>
     </div>
-
     <button class="btn-gps" onclick="getCurrentLocation()">📍 تحديث موقعي الحالي بالـ GPS</button>
-
     <div id="map"></div>
-
     <button class="btn-submit" onclick="sendHouseLocation()">تأكيد وإرسال للسائق 🚀</button>
 </div>
-
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
     const firebaseConfig = {
         apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
@@ -63,13 +54,12 @@
         appId: "1:699141823797:web:11768011079d9701f0807c",
         measurementId: "G-JX743D3NH8"
     };
-
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-
     let lat = 30.0444;
     let lng = 31.2357;
     let searchTimeout = null;
+    let driverLiveMarker = null;
 
     const map = L.map('map').setView([lat, lng], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
@@ -81,17 +71,14 @@
         map.setView([lat, lng], 16);
         marker.setLatLng([lat, lng]);
     }
-
     marker.on('dragend', () => {
         const pos = marker.getLatLng();
         lat = pos.lat; lng = pos.lng;
     });
-
     map.on('click', (e) => {
         marker.setLatLng(e.latlng);
         lat = e.latlng.lat; lng = e.latlng.lng;
     });
-
     function getCurrentLocation() {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition((pos) => {
@@ -99,26 +86,40 @@
             });
         }
     }
-
     window.onload = getCurrentLocation;
+
+    // الاستماع لموقع السائق المباشر وعرضه للراكب أثناء تحركه
+    db.ref('driver_location').on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data && data.lat && data.lng) {
+            const driverPos = [data.lat, data.lng];
+            if (driverLiveMarker) {
+                driverLiveMarker.setLatLng(driverPos);
+            } else {
+                driverLiveMarker = L.marker(driverPos, {
+                    icon: L.icon({
+                        iconUrl: 'https://cdn-icons-png.flaticon.com/512/854/854878.png',
+                        iconSize: [32, 32]
+                    })
+                }).addTo(map).bindPopup("موقع السيارة الحالي 🚖");
+            }
+        }
+    });
 
     // 🔍 محرك البحث والاقتراحات مقيد بمصر فقط (countrycodes=eg)
     function handleSearchInput() {
         clearTimeout(searchTimeout);
         const query = document.getElementById('searchInput').value.trim();
         const list = document.getElementById('suggestionsList');
-
         if (query.length < 3) {
             list.style.display = 'none';
             return;
         }
-
         // إرسال الطلب بعد توقف الكتابة بـ 300 مللي ثانية
         searchTimeout = setTimeout(async () => {
             try {
                 const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=eg&q=${encodeURIComponent(query)}`);
                 const data = await res.json();
-
                 list.innerHTML = '';
                 if (data && data.length > 0) {
                     list.style.display = 'block';
@@ -141,14 +142,12 @@
             }
         }, 300);
     }
-
     function sendHouseLocation() {
         const name = document.getElementById('passengerName').value.trim();
         if (!name) {
             alert('برجاء كتابة اسمك أولاً!');
             return;
         }
-
         db.ref('rides').push({
             name: name,
             lat: lat,
@@ -163,6 +162,5 @@
         });
     }
 </script>
-
 </body>
 </html>
