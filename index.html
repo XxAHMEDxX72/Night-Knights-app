@@ -48,7 +48,6 @@
     </style>
 </head>
 <body>
-
 <div class="room-bar">
     <div>
         <span>رمز الرحلة / الغرفة: </span>
@@ -56,20 +55,17 @@
     </div>
     <button class="btn-sm" style="background:#475569;" onclick="changeRoomId()">🔄 تغيير رمز الغرفة</button>
 </div>
-
 <div class="header-actions">
     <button class="btn btn-gps" id="gpsBtn" onclick="toggleLiveTracking()">📍 تفعيل التتبع المباشر (GPS)</button>
     <button class="btn btn-start" id="startTripBtn" onclick="toggleTrip()">🚀 بدء الرحلة وعرض الخريطة</button>
     <button class="btn btn-toggle-qr" onclick="toggleQR()">📱 إظهار / إخفاء الـ QR</button>
     <button class="btn btn-clear" onclick="clearAllRides()">🗑️ مسح ركاب هذه الغرفة</button>
 </div>
-
 <div class="qr-card" id="qrContainer">
     <h2>امسح الـ QR للإنضمام لرحلة السائق 📲</h2>
     <div id="qrcode"></div>
     <p style="font-size: 12px; color: #94a3b8;">خّلّي الركاب يمسحوا الكود لتحديد منزلهم لهذه الرحلة تحديداً</p>
 </div>
-
 <div class="main-layout" id="mainLayout">
     <div class="map-container" id="mapWrapper" style="display: none;">
         <div id="driverMap"></div>
@@ -81,7 +77,6 @@
         </div>
     </div>
 </div>
-
 <!-- JS Libraries -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
@@ -99,12 +94,20 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // إعداد معرّف الغرفة (Room ID)
-    let currentRoomId = localStorage.getItem('driver_room_id');
-    if (!currentRoomId) {
-        currentRoomId = 'room_' + Math.floor(1000 + Math.random() * 9000);
-        localStorage.setItem('driver_room_id', currentRoomId);
+    // دالة لتوليد رمز غرفة معقد وفريد مستحيل تكراره (حروف كابيتال وسمول وأرقام ورموز + طابع زمني)
+    function generateUniqueRoomId() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let randomPart = '';
+        const array = new Uint32Array(8);
+        window.crypto.getRandomValues(array);
+        for (let i = 0; i < array.length; i++) {
+            randomPart += chars[array[i] % chars.length];
+        }
+        return 'room_' + Date.now().toString(36) + '_' + randomPart;
     }
+
+    // إعداد معرّف الغرفة (Room ID) فريد لكل رحلة
+    let currentRoomId = generateUniqueRoomId();
     document.getElementById('roomIdInput').value = currentRoomId;
 
     let driverLat = 30.0444;
@@ -115,9 +118,9 @@
     let watchPositionId = null;
     let ridesListener = null;
 
-    // توليد QR موجه للغرفة الحالية
+    // توليد QR موجه للغرفة الحالية مع تشفير الرابط ليدعم الرموز المعقدة
     function generateRoomQR() {
-        const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html?room=' + currentRoomId;
+        const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html?room=' + encodeURIComponent(currentRoomId);
         const qrcodeContainer = document.getElementById("qrcode");
         qrcodeContainer.innerHTML = "";
         qrCodeObj = new QRCode(qrcodeContainer, { text: passengerPageUrl, width: 150, height: 150 });
@@ -126,8 +129,7 @@
     function changeRoomId() {
         const newRoom = prompt("أدخل رمز الغرفة/الرحلة الجديد:", currentRoomId);
         if (newRoom && newRoom.trim() !== "") {
-            currentRoomId = newRoom.trim().toLowerCase().replace(/\s+/g, '_');
-            localStorage.setItem('driver_room_id', currentRoomId);
+            currentRoomId = newRoom.trim();
             document.getElementById('roomIdInput').value = currentRoomId;
             generateRoomQR();
             listenToRoomRides();
@@ -164,6 +166,12 @@
             btn.innerText = '🚀 بدء الرحلة وعرض الخريطة';
             btn.style.background = '#2563eb';
             stopLiveTracking();
+
+            // توليد رمز غرفة جديد وفريد تمامًا للرحلة القادمة عند إنهاء الرحلة
+            currentRoomId = generateUniqueRoomId();
+            document.getElementById('roomIdInput').value = currentRoomId;
+            generateRoomQR();
+            listenToRoomRides();
         }
     }
 
@@ -178,14 +186,12 @@
             watchPositionId = navigator.geolocation.watchPosition((pos) => {
                 driverLat = pos.coords.latitude;
                 driverLng = pos.coords.longitude;
-
                 // تحديث موقع السائق الخاص بهذه الغرفة فقط
                 db.ref(`rooms/${currentRoomId}/driver_location`).set({
                     lat: driverLat,
                     lng: driverLng,
                     timestamp: Date.now()
                 });
-
                 if (driverMarker) driverMarker.setLatLng([driverLat, driverLng]);
                 if (map) map.panTo([driverLat, driverLng]);
                 
