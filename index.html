@@ -7,6 +7,11 @@
     <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Leaflet Routing Machine لخطوط السير -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+
     <!-- SortableJS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <!-- QRCode JS -->
@@ -28,10 +33,13 @@
         .passenger-card { display: flex; align-items: center; justify-content: space-between; background: #f1f5f9; padding: 12px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #cbd5e1; }
         .delete-btn { background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; }
         .info-text { font-size: 15px; font-weight: bold; color: #0f172a; }
-        .sub-text { font-size: 12px; color: #475569; margin-top: 4px; word-break: break-all; }
+        .sub-text { font-size: 12px; color: #2563eb; margin-top: 4px; word-break: break-all; }
         
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; z-index: 2000; }
         .modal-content { background: white; padding: 24px; border-radius: 12px; text-align: center; color: #0f172a; }
+
+        /* إخفاء لوحة تعليمات القيادة الخاصة بـ Leaflet Routing للتبسيط */
+        .leaflet-routing-container { display: none !important; }
 
         @media (max-width: 768px) {
             .main-container { flex-direction: column; }
@@ -83,11 +91,9 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // إنشاء رقم رحلة خاص وجديد لهذا السائق
     const roomId = 'room_' + Math.random().toString(36).substring(2, 9);
     document.getElementById("roomIdText").innerText = roomId;
 
-    // مسح الرحلة والركاب تلقائياً من الفايربيس عند إغلاق السائق للصفحة
     const roomRef = ref(db, `rooms/${roomId}`);
     onDisconnect(roomRef).remove();
 
@@ -98,22 +104,40 @@
         attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    function fixMap() {
-        setTimeout(() => { map.invalidateSize(); }, 300);
+    let driverLat = null;
+    let driverLng = null;
+    let driverMarker = null;
+    let routingControl = null;
+
+    // تحديد موقع السائق تلقائياً
+    if (navigator.geolocation) {
+        navigator.geolocation.watchPosition((pos) => {
+            driverLat = pos.coords.latitude;
+            driverLng = pos.coords.longitude;
+
+            if (!driverMarker) {
+                driverMarker = L.marker([driverLat, driverLng]).addTo(map).bindPopup("<b>موقعي (السائق) 🚗</b>").openPopup();
+                map.setView([driverLat, driverLng], 13);
+            } else {
+                driverMarker.setLatLng([driverLat, driverLng]);
+            }
+            updateRoute();
+        }, (err) => {
+            console.log("لم يتم السماح بالوصول للموقع");
+        }, { enableHighAccuracy: true });
     }
-    fixMap();
-    window.addEventListener('resize', fixMap);
 
     let markers = {};
+    let passengerCoords = [];
     const passengerList = document.getElementById("passengerList");
     const pCount = document.getElementById("pCount");
 
-    // الاستماع فقط لركاب رحلة هذا السائق
     const passengersRef = ref(db, `rooms/${roomId}/passengers`);
     onValue(passengersRef, (snapshot) => {
         passengerList.innerHTML = "";
         Object.values(markers).forEach(m => map.removeLayer(m));
         markers = {};
+        passengerCoords = [];
 
         const data = snapshot.val();
         if (data) {
@@ -123,10 +147,12 @@
             entries.forEach(([id, p]) => {
                 const card = document.createElement("div");
                 card.className = "passenger-card";
+                const addressText = p.address ? `<a href="${p.address}" target="_blank" class="sub-text">🔗 رابط العنوان</a>` : `<span style="font-size:12px;color:#64748b;">📍 موقع تم تحديده تلقائياً</span>`;
+                
                 card.innerHTML = `
                     <div>
                         <div class="info-text">👤 ${p.name}</div>
-                        <div class="sub-text">📍 ${p.address || "موقع محدد"}</div>
+                        <div>${addressText}</div>
                     </div>
                     <button class="delete-btn" onclick="deletePassenger('${id}')">حذف</button>
                 `;
@@ -134,15 +160,42 @@
 
                 if (p.lat && p.lng) {
                     const marker = L.marker([p.lat, p.lng]).addTo(map)
-                        .bindPopup(`<b>${p.name}</b><br>${p.address || ''}`);
+                        .bindPopup(`<b>${p.name}</b>`);
                     markers[id] = marker;
+                    passengerCoords.push(L.latLng(p.lat, p.lng));
                 }
             });
-            fixMap();
+
+            updateRoute();
         } else {
             pCount.innerText = "0";
+            if (routingControl) {
+                map.removeControl(routingControl);
+                routingControl = null;
+            }
         }
     });
+
+    // رسم وتحديث خط السير بين السائق والركاب
+    function updateRoute() {
+        if (!driverLat || !driverLng || passengerCoords.length === 0) return;
+
+        const waypoints = [L.latLng(driverLat, driverLng), ...passengerCoords];
+
+        if (routingControl) {
+            map.removeControl(routingControl);
+        }
+
+        routingControl = L.Routing.control({
+            waypoints: waypoints,
+            routeWhileDragging: false,
+            addWaypoints: false,
+            show: false,
+            lineOptions: {
+                styles: [{ color: '#2563eb', opacity: 0.8, weight: 6 }]
+            }
+        }).addTo(map);
+    }
 
     window.deletePassenger = function(id) {
         remove(ref(db, `rooms/${roomId}/passengers/${id}`));
@@ -150,7 +203,6 @@
 
     new Sortable(passengerList, { animation: 150 });
 
-    // توليد الـ QR Code يحتوي على رابط صفحة الركاب مضافاً إليها رقم رحلة هذا السائق
     const btnQR = document.getElementById("btnQR");
     const qrModal = document.getElementById("qrModal");
     const btnCloseQR = document.getElementById("btnCloseQR");

@@ -29,7 +29,7 @@
         </div>
         <div class="form-group">
             <label>رابط موقع المنزل (خرائط جوجل):</label>
-            <input type="text" id="pAddress" placeholder="أو أدخل الرابط يدويًا">
+            <input type="text" id="pAddress" placeholder="ضع رابط Google Maps هنا">
         </div>
 
         <button type="button" id="btnGetLocation" class="btn btn-location">📍 تحديد موقعي الحالي تلقائياً</button>
@@ -57,7 +57,6 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // قراءة رقم الرحلة من الرابط
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room');
 
@@ -74,11 +73,23 @@
                 status.innerText = "✅ تم تحديد موقعك بنجاح!";
             }, (err) => {
                 status.innerText = "❌ تعذر تحديد الموقع، يرجى تفعيل الـ GPS.";
-            });
+            }, { enableHighAccuracy: true });
         } else {
             status.innerText = "❌ المتصفح لا يدعم التحديد التلقائي.";
         }
     };
+
+    // استخراج الإحداثيات لو الراكب حط رابط Google Maps يدوي
+    function extractCoordsFromUrl(url) {
+        const reg1 = /@(-?\d+\.\d+),(-?\d+\.\d+)/;
+        const reg2 = /q=(-?\d+\.\d+),(-?\d+\.\d+)/;
+        const match1 = url.match(reg1);
+        const match2 = url.match(reg2);
+        
+        if (match1) return { lat: parseFloat(match1[1]), lng: parseFloat(match1[2]) };
+        if (match2) return { lat: parseFloat(match2[1]), lng: parseFloat(match2[2]) };
+        return null;
+    }
 
     document.getElementById("passengerForm").onsubmit = (e) => {
         e.preventDefault();
@@ -91,7 +102,15 @@
         const name = document.getElementById("pName").value;
         const address = document.getElementById("pAddress").value;
 
-        // إرسال البيانات تحت الرحلة المحددة
+        // لو ما داسش على الزرار التلقائي بس حط رابط، نحاول نطلع الموقع من الرابط
+        if (!currentLat && address) {
+            const parsed = extractCoordsFromUrl(address);
+            if (parsed) {
+                currentLat = parsed.lat;
+                currentLng = parsed.lng;
+            }
+        }
+
         push(ref(db, `rooms/${roomId}/passengers`), {
             name: name,
             address: address,
@@ -102,6 +121,8 @@
             alert("تم إرسال بياناتك بنجاح للسائق!");
             document.getElementById("passengerForm").reset();
             document.getElementById("locationStatus").innerText = "";
+            currentLat = null;
+            currentLng = null;
         }).catch((err) => {
             alert("حدث خطأ أثناء الإرسال: " + err.message);
         });
