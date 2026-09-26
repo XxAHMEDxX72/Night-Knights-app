@@ -7,19 +7,25 @@
     <!-- Leaflet Map CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- SortableJS للترتيب بالسحب (6 نقاط) -->
+    <!-- SortableJS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <!-- QRCode JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        body { margin: 0; font-family: system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; }
-        header { background: #1e293b; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
-        .main-container { display: flex; flex: 1; overflow: hidden; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { background: #1e293b; color: white; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; z-index: 100; }
+        header h2 { margin: 0; font-size: 18px; }
+        header button { padding: 6px 12px; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        
+        .main-container { display: flex; flex: 1; height: calc(100vh - 50px); }
+        
+        /* تصميم الشاشات الكبيرة (الكمبيوتر) */
         .right-panel { width: 50%; padding: 15px; border-left: 2px solid #e2e8f0; overflow-y: auto; background: #fafafa; }
         .left-panel { width: 50%; height: 100%; }
         #map { width: 100%; height: 100%; }
         
-        .passenger-card { display: flex; align-items: center; justify-content: space-between; background: white; padding: 12px; margin-bottom: 8px; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .passenger-card { display: flex; align-items: center; justify-content: space-between; background: white; padding: 12px; margin-bottom: 8px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .drag-handle { cursor: grab; font-size: 20px; padding: 0 8px; color: #6b7280; user-select: none; }
         .delete-btn { background: #ef4444; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
         .info-text { font-size: 14px; font-weight: bold; }
@@ -27,25 +33,32 @@
         
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
         .modal-content { background: white; padding: 20px; border-radius: 10px; text-align: center; }
+
+        /* تعديلات الموبايل تلقائياً */
+        @media (max-width: 768px) {
+            .main-container { flex-direction: column; }
+            .left-panel { width: 100%; height: 50vh; order: 1; } /* الخريطة في النص اللي فوق */
+            .right-panel { width: 100%; height: 50vh; order: 2; border-left: none; border-top: 2px solid #e2e8f0; } /* الأسماء في النص اللي تحت */
+        }
     </style>
 </head>
 <body>
 
 <header>
     <h2>لوحة السائق</h2>
-    <button id="btnQR" style="padding: 8px 16px; cursor:pointer;">عرض QR Code للركاب</button>
+    <button id="btnQR">عرض QR Code</button>
 </header>
 
 <div class="main-container" id="mainLayout">
-    <!-- الشق الأيمن: الأسماء والعناوين -->
-    <div class="right-panel">
-        <h3>قائمة الركاب (<span id="pCount">0</span>)</h3>
-        <div id="passengerList"></div>
-    </div>
-
     <!-- الشق الأيسر: الخريطة -->
     <div class="left-panel">
         <div id="map"></div>
+    </div>
+
+    <!-- الشق الأيمن: الأسماء والعناوين -->
+    <div class="right-panel">
+        <h3 style="margin-top: 0;">قائمة الركاب (<span id="pCount">0</span>)</h3>
+        <div id="passengerList"></div>
     </div>
 </div>
 
@@ -53,7 +66,7 @@
     <div class="modal-content">
         <h3>امسح الـ QR للوصول لفورم التسجيل</h3>
         <div id="qrcode" style="display: flex; justify-content: center; margin: 15px 0;"></div>
-        <button id="btnCloseQR">إغلاق</button>
+        <button id="btnCloseQR" style="padding: 6px 15px; cursor:pointer;">إغلاق</button>
     </div>
 </div>
 
