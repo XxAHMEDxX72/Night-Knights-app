@@ -16,13 +16,16 @@
         * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
         body { background: #0f172a; color: #f8fafc; margin: 0; padding: 15px; min-height: 100vh; display: flex; flex-direction: column; }
         
+        .room-bar { background: #1e293b; border: 1px solid #334155; padding: 10px 15px; border-radius: 12px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+        .room-bar input { background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #f8fafc; padding: 6px 10px; font-weight: bold; width: 140px; }
+        
         .header-actions { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
         .btn { border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; font-size: 14px; flex: 1; min-width: 140px; }
         .btn-gps { background: #10b981; }
         .btn-start { background: #2563eb; }
         .btn-toggle-qr { background: #0284c7; }
         .btn-clear { background: #ef4444; }
-        /* تقسيم الشاشة عند بدء الرحلة */
+        
         .main-layout { display: flex; flex-direction: column; gap: 15px; flex: 1; }
         @media (min-width: 900px) {
             .main-layout.trip-active { flex-direction: row-reverse; }
@@ -40,24 +43,33 @@
         .controls { display: flex; gap: 4px; align-items: center; }
         .btn-sm { padding: 5px 8px; border-radius: 6px; border: none; background: #374151; color: white; cursor: pointer; font-size: 12px; }
         .btn-nav { background: #22c55e; color: white; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; }
-        .badge { background: #0284c7; color: white; padding: 3px 8px; border-radius: 10px; font-size: 11px; }
         
-        /* إخفاء إرشادات الطريق النصية التلقائية للخريطة للتبسيط */
         .leaflet-routing-container { display: none !important; }
     </style>
 </head>
 <body>
+
+<div class="room-bar">
+    <div>
+        <span>رمز الرحلة / الغرفة: </span>
+        <input type="text" id="roomIdInput" readonly>
+    </div>
+    <button class="btn-sm" style="background:#475569;" onclick="changeRoomId()">🔄 تغيير رمز الغرفة</button>
+</div>
+
 <div class="header-actions">
     <button class="btn btn-gps" id="gpsBtn" onclick="toggleLiveTracking()">📍 تفعيل التتبع المباشر (GPS)</button>
     <button class="btn btn-start" id="startTripBtn" onclick="toggleTrip()">🚀 بدء الرحلة وعرض الخريطة</button>
     <button class="btn btn-toggle-qr" onclick="toggleQR()">📱 إظهار / إخفاء الـ QR</button>
-    <button class="btn btn-clear" onclick="clearAllRides()">🗑️ مسح رحلات اليوم</button>
+    <button class="btn btn-clear" onclick="clearAllRides()">🗑️ مسح ركاب هذه الغرفة</button>
 </div>
+
 <div class="qr-card" id="qrContainer">
-    <h2>امسح الـ QR لتحديد عنوان البيت 📲</h2>
+    <h2>امسح الـ QR للإنضمام لرحلة السائق 📲</h2>
     <div id="qrcode"></div>
-    <p style="font-size: 12px; color: #94a3b8;">خّلّي الركاب يمسحوا الكود ويكتبوا أسمائهم وعناوينهم</p>
+    <p style="font-size: 12px; color: #94a3b8;">خّلّي الركاب يمسحوا الكود لتحديد منزلهم لهذه الرحلة تحديداً</p>
 </div>
+
 <div class="main-layout" id="mainLayout">
     <div class="map-container" id="mapWrapper" style="display: none;">
         <div id="driverMap"></div>
@@ -69,6 +81,7 @@
         </div>
     </div>
 </div>
+
 <!-- JS Libraries -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
@@ -85,18 +98,42 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    let driverLat = 30.0444; // افتراضي القاهرة / الجيزة
+
+    // إعداد معرّف الغرفة (Room ID)
+    let currentRoomId = localStorage.getItem('driver_room_id');
+    if (!currentRoomId) {
+        currentRoomId = 'room_' + Math.floor(1000 + Math.random() * 9000);
+        localStorage.setItem('driver_room_id', currentRoomId);
+    }
+    document.getElementById('roomIdInput').value = currentRoomId;
+
+    let driverLat = 30.0444;
     let driverLng = 31.2357;
-    let map, routingControl, driverMarker;
+    let map, routingControl, driverMarker, qrCodeObj;
     let passengers = [];
     let isTripStarted = false;
     let watchPositionId = null;
+    let ridesListener = null;
 
-    // 1. توليد الـ QR
-    const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html';
-    new QRCode(document.getElementById("qrcode"), { text: passengerPageUrl, width: 150, height: 150 });
+    // توليد QR موجه للغرفة الحالية
+    function generateRoomQR() {
+        const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html?room=' + currentRoomId;
+        const qrcodeContainer = document.getElementById("qrcode");
+        qrcodeContainer.innerHTML = "";
+        qrCodeObj = new QRCode(qrcodeContainer, { text: passengerPageUrl, width: 150, height: 150 });
+    }
 
-    // 2. تهيئة الخريطة
+    function changeRoomId() {
+        const newRoom = prompt("أدخل رمز الغرفة/الرحلة الجديد:", currentRoomId);
+        if (newRoom && newRoom.trim() !== "") {
+            currentRoomId = newRoom.trim().toLowerCase().replace(/\s+/g, '_');
+            localStorage.setItem('driver_room_id', currentRoomId);
+            document.getElementById('roomIdInput').value = currentRoomId;
+            generateRoomQR();
+            listenToRoomRides();
+        }
+    }
+
     function initMap() {
         if (map) return;
         map = L.map('driverMap').setView([driverLat, driverLng], 14);
@@ -104,7 +141,6 @@
         driverMarker = L.marker([driverLat, driverLng]).addTo(map).bindPopup("موقع العربية الحالي").openPopup();
     }
 
-    // 3. زر بدء/إنهاء الرحلة
     function toggleTrip() {
         isTripStarted = !isTripStarted;
         const layout = document.getElementById('mainLayout');
@@ -119,7 +155,7 @@
             btn.style.background = '#d97706';
             initMap();
             setTimeout(() => { map.invalidateSize(); }, 300);
-            startLiveTracking(); // تفعيل التتبع التلقائي عند بدء الرحلة
+            startLiveTracking();
             updateRoute();
         } else {
             qrContainer.style.display = 'block';
@@ -136,7 +172,6 @@
         qr.style.display = qr.style.display === 'none' ? 'block' : 'none';
     }
 
-    // 4. التتبع المباشر (Live GPS Tracking) للسائق وإرساله إلى Firebase
     function startLiveTracking() {
         if ("geolocation" in navigator) {
             if (watchPositionId !== null) return;
@@ -144,27 +179,21 @@
                 driverLat = pos.coords.latitude;
                 driverLng = pos.coords.longitude;
 
-                // إرسال موقع العربية المباشر إلى Firebase ليتسنى للجميع التتبع
-                db.ref('driver_location').set({
+                // تحديث موقع السائق الخاص بهذه الغرفة فقط
+                db.ref(`rooms/${currentRoomId}/driver_location`).set({
                     lat: driverLat,
                     lng: driverLng,
                     timestamp: Date.now()
                 });
 
-                // تحديث مكان السيارة والمكان على الخريطة
                 if (driverMarker) driverMarker.setLatLng([driverLat, driverLng]);
                 if (map) map.panTo([driverLat, driverLng]);
                 
-                // إعادة قياس المسافات وتحديث خط السير فورياً
                 recalculateDistances();
                 if (isTripStarted) updateRoute();
             }, (err) => {
-                console.error("خطأ في جلب موقع الـ GPS:", err.message);
-            }, {
-                enableHighAccuracy: true,
-                maximumAge: 0,
-                timeout: 10000
-            });
+                console.error("خطأ الـ GPS:", err.message);
+            }, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
             
             const gpsBtn = document.getElementById('gpsBtn');
             if (gpsBtn) {
@@ -187,15 +216,8 @@
     }
 
     function toggleLiveTracking() {
-        if (watchPositionId === null) {
-            startLiveTracking();
-        } else {
-            stopLiveTracking();
-        }
-    }
-
-    function updateDriverLocation() {
-        startLiveTracking();
+        if (watchPositionId === null) startLiveTracking();
+        else stopLiveTracking();
     }
 
     function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -215,41 +237,42 @@
         renderPassengers();
     }
 
-    // 5. الاستماع للركاب من قاعدة البيانات
-    db.ref('rides').on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (!data) {
-            passengers = [];
+    // الاستماع لركاب الغرفة المحددة فقط
+    function listenToRoomRides() {
+        if (ridesListener) db.ref(`rooms/${currentRoomId}/rides`).off('value', ridesListener);
+        
+        ridesListener = db.ref(`rooms/${currentRoomId}/rides`).on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+                passengers = [];
+                renderPassengers();
+                return;
+            }
+            let newPassengers = [];
+            for (let id in data) {
+                const p = data[id];
+                const dist = calculateDistance(driverLat, driverLng, p.lat, p.lng);
+                newPassengers.push({ ...p, id, distance: dist });
+            }
+            if (passengers.length === 0) {
+                newPassengers.sort((a, b) => a.distance - b.distance);
+                passengers = newPassengers;
+            } else {
+                const existingIds = passengers.map(p => p.id);
+                newPassengers.forEach(np => {
+                    if (!existingIds.includes(np.id)) passengers.push(np);
+                });
+            }
             renderPassengers();
-            return;
-        }
-        let newPassengers = [];
-        for (let id in data) {
-            const p = data[id];
-            const dist = calculateDistance(driverLat, driverLng, p.lat, p.lng);
-            newPassengers.push({ ...p, id, distance: dist });
-        }
-        // إذا كانت رحلة جديدة، رتبهم تلقائياً حسب الأقرب
-        if (passengers.length === 0) {
-            newPassengers.sort((a, b) => a.distance - b.distance);
-            passengers = newPassengers;
-        } else {
-            // المحافظة على الترتيب اليدوي وإضافة الركاب الجدد فقط
-            const existingIds = passengers.map(p => p.id);
-            newPassengers.forEach(np => {
-                if (!existingIds.includes(np.id)) passengers.push(np);
-            });
-        }
-        renderPassengers();
-        if (isTripStarted) updateRoute();
-    });
+            if (isTripStarted) updateRoute();
+        });
+    }
 
-    // 6. عرض قائمة الركاب
     function renderPassengers() {
         const listElement = document.getElementById('passengersList');
         listElement.innerHTML = '';
         if (passengers.length === 0) {
-            listElement.innerHTML = '<p style="text-align: center; color: #64748b;">لا توجد عناوين مسجلة</p>';
+            listElement.innerHTML = '<p style="text-align: center; color: #64748b;">لا توجد عناوين مسجلة لهذه الرحلة</p>';
             return;
         }
         passengers.forEach((p, index) => {
@@ -272,7 +295,6 @@
         });
     }
 
-    // 7. تغيير ترتيب الركاب يدوياً
     function movePassenger(index, direction) {
         const newIndex = index + direction;
         if (newIndex < 0 || newIndex >= passengers.length) return;
@@ -284,16 +306,15 @@
     }
 
     function deletePassenger(id) {
-        db.ref('rides/' + id).remove();
+        db.ref(`rooms/${currentRoomId}/rides/${id}`).remove();
         passengers = passengers.filter(p => p.id !== id);
         renderPassengers();
         if (isTripStarted) updateRoute();
     }
 
-    // 8. رسم خط السير لأقرب راكب على الخريطة وتحديثه
     function updateRoute() {
         if (!map || passengers.length === 0) return;
-        const target = passengers[0]; // الراكب الأول في القائمة
+        const target = passengers[0];
         if (routingControl) map.removeControl(routingControl);
         routingControl = L.Routing.control({
             waypoints: [
@@ -308,15 +329,19 @@
     }
 
     function clearAllRides() {
-        if(confirm('هل تريد مسح جميع الركاب؟')) {
-            db.ref('rides').remove();
+        if(confirm(`هل تريد مسح جميع ركاب الغرفة (${currentRoomId})؟`)) {
+            db.ref(`rooms/${currentRoomId}/rides`).remove();
             passengers = [];
             if (routingControl) map.removeControl(routingControl);
             renderPassengers();
         }
     }
 
-    window.onload = startLiveTracking;
+    window.onload = () => {
+        generateRoomQR();
+        listenToRoomRides();
+        startLiveTracking();
+    };
 </script>
 </body>
 </html>

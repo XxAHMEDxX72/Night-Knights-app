@@ -14,10 +14,10 @@
         body { background: #111827; color: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 15px; }
         .card { background: #1f2937; border: 1px solid #374151; padding: 20px; border-radius: 16px; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
         h2 { text-align: center; margin-top: 0; font-size: 18px; color: #60a5fa; }
+        .room-badge { text-align: center; background: #374151; padding: 4px 10px; border-radius: 8px; font-size: 12px; color: #10b981; margin-bottom: 12px; font-weight: bold; }
         label { display: block; margin: 10px 0 5px; font-size: 13px; color: #9ca3af; }
         input { width: 100%; padding: 11px; background: #374151; border: 1px solid #4b5563; border-radius: 8px; color: white; font-size: 14px; outline: none; }
         
-        /* قائمة اقتراحات البحث */
         .search-wrapper { position: relative; margin-bottom: 10px; }
         .suggestions-list { position: absolute; top: 100%; left: 0; right: 0; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; max-height: 180px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); display: none; }
         .suggestion-item { padding: 10px; border-bottom: 1px solid #374151; font-size: 12px; cursor: pointer; color: #e5e7eb; }
@@ -30,17 +30,22 @@
 <body>
 <div class="card">
     <h2>حدد عنوان بيتك للنزول 🏠</h2>
+    <div class="room-badge" id="roomBadge">رمز الرحلة: جاري التحميل...</div>
+    
     <label>اسم الراكب:</label>
     <input type="text" id="passengerName" placeholder="اكتب اسمك..." required>
+    
     <label>ابحث عن الشارع / منطقة / محطة (في مصر):</label>
     <div class="search-wrapper">
         <input type="text" id="searchInput" placeholder="مثال: محطة مترو فيصل..." oninput="handleSearchInput()">
         <div class="suggestions-list" id="suggestionsList"></div>
     </div>
+    
     <button class="btn-gps" onclick="getCurrentLocation()">📍 تحديث موقعي الحالي بالـ GPS</button>
     <div id="map"></div>
     <button class="btn-submit" onclick="sendHouseLocation()">تأكيد وإرسال للسائق 🚀</button>
 </div>
+
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -56,6 +61,19 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+
+    // قراءة roomId من رابط الصفحة (URL Query Param)
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room');
+
+    if (!roomId) {
+        alert("خطأ: رابط الصفحة غير مكتمل أو لا يحتوي على رمز الرحلة!");
+        document.getElementById('roomBadge').innerText = "خطأ: رحلة غير معروفة";
+        document.getElementById('roomBadge').style.color = "#ef4444";
+    } else {
+        document.getElementById('roomBadge').innerText = `انضمام للرحلة رقم: ${roomId}`;
+    }
+
     let lat = 30.0444;
     let lng = 31.2357;
     let searchTimeout = null;
@@ -71,14 +89,17 @@
         map.setView([lat, lng], 16);
         marker.setLatLng([lat, lng]);
     }
+
     marker.on('dragend', () => {
         const pos = marker.getLatLng();
         lat = pos.lat; lng = pos.lng;
     });
+
     map.on('click', (e) => {
         marker.setLatLng(e.latlng);
         lat = e.latlng.lat; lng = e.latlng.lng;
     });
+
     function getCurrentLocation() {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition((pos) => {
@@ -86,27 +107,27 @@
             });
         }
     }
-    window.onload = getCurrentLocation;
 
-    // الاستماع لموقع السائق المباشر وعرضه للراكب أثناء تحركه
-    db.ref('driver_location').on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (data && data.lat && data.lng) {
-            const driverPos = [data.lat, data.lng];
-            if (driverLiveMarker) {
-                driverLiveMarker.setLatLng(driverPos);
-            } else {
-                driverLiveMarker = L.marker(driverPos, {
-                    icon: L.icon({
-                        iconUrl: 'https://cdn-icons-png.flaticon.com/512/854/854878.png',
-                        iconSize: [32, 32]
-                    })
-                }).addTo(map).bindPopup("موقع السيارة الحالي 🚖");
+    // متابعة موقع السائق الخاص بهذه الغرفة فقط
+    if (roomId) {
+        db.ref(`rooms/${roomId}/driver_location`).on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data && data.lat && data.lng) {
+                const driverPos = [data.lat, data.lng];
+                if (driverLiveMarker) {
+                    driverLiveMarker.setLatLng(driverPos);
+                } else {
+                    driverLiveMarker = L.marker(driverPos, {
+                        icon: L.icon({
+                            iconUrl: 'https://cdn-icons-png.flaticon.com/512/854/854878.png',
+                            iconSize: [32, 32]
+                        })
+                    }).addTo(map).bindPopup("موقع السيارة الحالي 🚖");
+                }
             }
-        }
-    });
+        });
+    }
 
-    // 🔍 محرك البحث والاقتراحات مقيد بمصر فقط (countrycodes=eg)
     function handleSearchInput() {
         clearTimeout(searchTimeout);
         const query = document.getElementById('searchInput').value.trim();
@@ -115,7 +136,6 @@
             list.style.display = 'none';
             return;
         }
-        // إرسال الطلب بعد توقف الكتابة بـ 300 مللي ثانية
         searchTimeout = setTimeout(async () => {
             try {
                 const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=eg&q=${encodeURIComponent(query)}`);
@@ -142,13 +162,20 @@
             }
         }, 300);
     }
+
     function sendHouseLocation() {
+        if (!roomId) {
+            alert('لا يمكن إرسال الموقع بدون رمز رحلة صحيح!');
+            return;
+        }
         const name = document.getElementById('passengerName').value.trim();
         if (!name) {
             alert('برجاء كتابة اسمك أولاً!');
             return;
         }
-        db.ref('rides').push({
+
+        // الحفظ داخل مسار الغرفة المحددة
+        db.ref(`rooms/${roomId}/rides`).push({
             name: name,
             lat: lat,
             lng: lng,
@@ -161,6 +188,8 @@
             }
         });
     }
+
+    window.onload = getCurrentLocation;
 </script>
 </body>
 </html>
