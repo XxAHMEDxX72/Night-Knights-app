@@ -4,108 +4,61 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تحديد موقع الراكب</title>
-    <!-- Leaflet CSS -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
         body { background: #111827; color: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 15px; }
-        .card { background: #1f2937; border: 1px solid #374151; padding: 20px; border-radius: 16px; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
-        h2 { text-align: center; margin-top: 0; font-size: 20px; color: #60a5fa; }
-        label { display: block; margin: 12px 0 6px; font-size: 13px; color: #9ca3af; }
-        input { width: 100%; padding: 12px; background: #374151; border: 1px solid #4b5563; border-radius: 8px; color: white; font-size: 14px; outline: none; }
-        input:focus { border-color: #3b82f6; }
-        .search-box { position: relative; }
-        .search-btn { position: absolute; left: 5px; top: 5px; background: #2563eb; color: white; border: none; padding: 7px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-        #map { height: 250px; border-radius: 10px; margin: 15px 0; border: 1px solid #4b5563; }
-        .btn-submit { width: 100%; background: #2563eb; color: white; border: none; padding: 14px; border-radius: 10px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 10px; }
-        .btn-submit:hover { background: #1d4ed8; }
-        .coords { font-size: 11px; color: #9ca3af; text-align: center; margin-top: 5px; direction: ltr; }
+        .card { background: #1f2937; border: 1px solid #374151; padding: 20px; border-radius: 16px; width: 100%; max-width: 400px; }
+        input { width: 100%; padding: 12px; background: #374151; border: 1px solid #4b5563; border-radius: 8px; color: white; margin: 8px 0 15px; }
+        #map { height: 220px; border-radius: 10px; margin-bottom: 15px; }
+        button { width: 100%; background: #2563eb; color: white; border: none; padding: 14px; border-radius: 10px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>تأكيد موقع أخذ الراكب 🚖</h2>
+    <h2 style="text-align: center; color: #60a5fa;">إرسال موقع الراكب 🚖</h2>
+    <label>اسمك:</label>
+    <input type="text" id="passengerName" placeholder="اكتب اسمك هنا...">
 
-    <label>اسم الراكب:</label>
-    <input type="text" id="passengerName" placeholder="اكتب اسمك هنا..." required>
-
-    <label>ابحث عن عنوانك / منطقتك:</label>
-    <div class="search-box">
-        <input type="text" id="searchInput" placeholder="مثال: شارع الهرم، الجيزة">
-        <button class="search-btn" onclick="searchLocation()">بحث</button>
-    </div>
-
+    <label>حدد مكانك على الخريطة:</label>
     <div id="map"></div>
-    <div class="coords" id="coordsDisplay">30.044400, 31.235700</div>
 
-    <button class="btn-submit" onclick="sendData()">تأكيد الموقع والإرسال</button>
+    <button onclick="sendLocation()">تأكيد وإرسال للسائق</button>
 </div>
 
-<!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-    let lat = 30.0444; // افتراضي: القاهرة/الجيزة
-    let lng = 31.2357;
+    const firebaseConfig = { databaseURL: "https://night-knights-app-default-rtdb.firebaseio.com" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-    // تشغيل الخريطة
-    const map = L.map('map').setView([lat, lng], 14);
+    let lat = 30.0444, lng = 31.2357;
+    const map = L.map('map').setView([lat, lng], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-    // إضافة دبوس متحرك
     const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
 
-    function updateCoords(newLat, newLng) {
-        lat = newLat;
-        lng = newLng;
-        document.getElementById('coordsDisplay').innerText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-    }
-
-    marker.on('dragend', function() {
-        const position = marker.getLatLng();
-        updateCoords(position.lat, position.lng);
+    marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        lat = pos.lat; lng = pos.lng;
     });
 
-    map.on('click', function(e) {
-        marker.setLatLng(e.latlng);
-        updateCoords(e.latlng.lat, e.latlng.lng);
-    });
-
-    // خادم البحث عن العناوين (Nominatim OpenStreetMap)
-    async function searchLocation() {
-        const query = document.getElementById('searchInput').value.trim();
-        if (!query) return;
-
-        try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
-            const data = await response.json();
-
-            if (data && data.length > 0) {
-                const searchLat = parseFloat(data[0].lat);
-                const searchLng = parseFloat(data[0].lon);
-
-                map.setView([searchLat, searchLng], 16);
-                marker.setLatLng([searchLat, searchLng]);
-                updateCoords(searchLat, searchLng);
-            } else {
-                alert('لم يتم العثور على نتائج لهذا العنوان، حاول كتابة اسم المنطقة أو الشارع الرئيسي.');
-            }
-        } catch (error) {
-            alert('حدث خطأ أثناء البحث، يرجى المحاولة مرة أخرى.');
-        }
-    }
-
-    // إرسال البيانات لصفحة السائق
-    function sendData() {
+    function sendLocation() {
         const name = document.getElementById('passengerName').value.trim();
-        if (!name) {
-            alert('يرجى كتابة اسمك أولاً!');
-            return;
-        }
+        if(!name) { alert('اكتب اسمك الأول!'); return; }
 
-        // إرسال البيانات إلى index.html الخاص بالسائق
-        window.location.href = `index.html?name=${encodeURIComponent(name)}&lat=${lat}&lng=${lng}`;
+        db.ref('rides').push({
+            name: name,
+            lat: lat,
+            lng: lng,
+            timestamp: Date.now()
+        }, (error) => {
+            if(!error) {
+                alert('تم إرسال موقعك للسائق بنجاح!');
+            }
+        });
     }
 </script>
 
