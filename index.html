@@ -3,56 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>شاشة السائق - ترتيب الركاب</title>
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <title>شاشة السائق - خط سير التوصيل</title>
+    <!-- Firebase JS SDK (v9+ compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <!-- QR Code Generator -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-        body { background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-        .container { width: 100%; max-width: 500px; }
+        body { background: #0f172a; color: #f8fafc; margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 480px; }
         .card { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 16px; text-align: center; margin-bottom: 20px; }
-        #qrcode { display: flex; justify-content: center; margin: 15px 0; background: white; padding: 10px; border-radius: 12px; }
-        .passenger-list { display: flex; flex-direction: column; gap: 12px; }
-        .passenger-card { background: #1e293b; border: 1px solid #334155; padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
-        .distance-badge { background: #0284c7; color: white; padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 13px; }
-        .btn-nav { background: #22c55e; color: white; text-decoration: none; padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: bold; }
-        .clear-btn { background: #ef4444; color: white; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
+        #qrcode { display: flex; justify-content: center; margin: 15px 0; background: white; padding: 12px; border-radius: 12px; }
+        .btn-gps { background: #10b981; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 10px; font-size: 14px; }
+        .passenger-list { display: flex; flex-direction: column; gap: 10px; }
+        .passenger-card { background: #1e293b; border: 1px solid #334155; padding: 14px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .badge { background: #0284c7; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
+        .btn-nav { background: #22c55e; color: white; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: bold; }
+        .clear-btn { background: #ef4444; color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 15px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="card">
-        <h2>امسح الـ QR Code لتحديد الموقع 📲</h2>
+        <h2>امسح الـ QR لتحديد عنوان البيت 📲</h2>
         <div id="qrcode"></div>
-        <p style="font-size: 12px; color: #94a3b8;">شارك الكود مع الركاب للتسجيل في نفس الوقت</p>
+        <p style="font-size: 12px; color: #94a3b8;">خلّي الركاب يمسحوا الكود ويكتبوا أسمائهم وعناوينهم</p>
     </div>
 
-    <h3>قائمة الركاب (مرتبة من الأقرب للأبعد) 🚖</h3>
-    <button class="clear-btn" onclick="clearRequests()">مسح جميع الطلبات</button>
-    <br><br>
-    
+    <button class="btn-gps" onclick="updateDriverLocation()">📍 تحديث موقع العربية الحالي (بداية الخط)</button>
+    <button class="clear-btn" onclick="clearAllRides()">🗑️ مسح جميع الطلبات / بداية دورة جديدة</button>
+
+    <h3>خط سير التوصيل (من الأقرب للأبعد) 🚖</h3>
     <div id="passengersList" class="passenger-list">
-        <p style="text-align: center; color: #64748b;">في انتظار تسجيل الركاب...</p>
+        <p style="text-align: center; color: #64748b;">في انتظار تسجيل الركاب لعناوينهم...</p>
     </div>
 </div>
 
 <script>
-    // 1. إعدادات Firebase (متروكة لك لتسجيل مشروع مجاني على firebase.google.com أو تجربة النمط المباشر)
+    // إعدادات مشروع Firebase الخاص بك
     const firebaseConfig = {
-        databaseURL: "https://night-knights-app-default-rtdb.firebaseio.com" // ضع رابط قاعدة بياناتك هنا
+        apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
+        authDomain: "black-knights-5c5a8.firebaseapp.com",
+        databaseURL: "https://black-knights-5c5a8-default-rtdb.firebaseio.com",
+        projectId: "black-knights-5c5a8",
+        storageBucket: "black-knights-5c5a8.firebasestorage.app",
+        messagingSenderId: "699141823797",
+        appId: "1:699141823797:web:11768011079d9701f0807c",
+        measurementId: "G-JX743D3NH8"
     };
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // موقع السائق الحالي (مكانه الافتراضي)
-    const driverLat = 30.0444; 
-    const driverLng = 31.2357;
+    let driverLat = 30.0444; // موقع افتراضي (الجيزة / القاهرة)
+    let driverLng = 31.2357;
 
-    // 2. إنشاء الـ QR Code لصفحة الراكب المباشرة
+    // 1. توليد الـ QR Code الخاص بصفحة الراكب تلقائياً
     const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html';
     new QRCode(document.getElementById("qrcode"), {
         text: passengerPageUrl,
@@ -60,59 +68,81 @@
         height: 160
     });
 
-    // 3. حساب المسافة الجغرافية بين السائق والراكب بالـ Kilometers
+    // 2. جلب موقع العربية الحالي عبر الـ GPS
+    function updateDriverLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                driverLat = pos.coords.latitude;
+                driverLng = pos.coords.longitude;
+                alert('تم تحديث موقع العربية الحالي بنجاح!');
+                loadAndSortRides();
+            }, () => {
+                alert('تعذر جلب موقع الـ GPS، يرجى تفعيل الموقع على الموبايل.');
+            });
+        }
+    }
+
+    // 3. حساب المسافة بين مكان السائق وبيوت الركاب (Haversine Formula)
     function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371; // نصف قطر الأرض بالكيلومتر
+        const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
         const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
                   Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
                   Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
+        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
     }
 
-    // 4. الاستماع لطلبات الركاب ومزامنتها وتنسيقها من الأقرب للأبعد
-    db.ref('rides').on('value', (snapshot) => {
-        const data = snapshot.val();
-        const listElement = document.getElementById('passengersList');
-        listElement.innerHTML = '';
+    // 4. الاستماع المباشر لبيانات الركاب وترتيب القائمة
+    function loadAndSortRides() {
+        db.ref('rides').on('value', (snapshot) => {
+            const data = snapshot.val();
+            const listElement = document.getElementById('passengersList');
+            listElement.innerHTML = '';
 
-        if (!data) {
-            listElement.innerHTML = '<p style="text-align: center; color: #64748b;">لا توجد طلبات حتي الآن</p>';
-            return;
-        }
+            if (!data) {
+                listElement.innerHTML = '<p style="text-align: center; color: #64748b;">لا توجد عناوين مسجلة حتى الآن</p>';
+                return;
+            }
 
-        let passengers = [];
-        for (let id in data) {
-            const p = data[id];
-            const dist = calculateDistance(driverLat, driverLng, p.lat, p.lng);
-            passengers.push({ ...p, id, distance: dist });
-        }
+            let passengers = [];
+            for (let id in data) {
+                const p = data[id];
+                const dist = calculateDistance(driverLat, driverLng, p.lat, p.lng);
+                passengers.push({ ...p, id, distance: dist });
+            }
 
-        // ترتيب الصعود والتجميع من الأقرب إلى الأبعد
-        passengers.sort((a, b) => a.distance - b.distance);
+            // ترتيب القائمة من الأقرب إلى الأبعد
+            passengers.sort((a, b) => a.distance - b.distance);
 
-        passengers.forEach((p, index) => {
-            const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
-            listElement.innerHTML += `
-                <div class="passenger-card">
-                    <div>
-                        <strong style="font-size: 16px;">#${index + 1} - ${p.name}</strong>
-                        <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">يبعد: ${p.distance.toFixed(2)} كم</div>
+            passengers.forEach((p, index) => {
+                const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
+                listElement.innerHTML += `
+                    <div class="passenger-card">
+                        <div>
+                            <strong>#${index + 1} - ${p.name}</strong>
+                            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">البيت يبعد: ${p.distance.toFixed(2)} كم</div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span class="badge">${p.distance.toFixed(1)} كم</span>
+                            <a href="${gmapsUrl}" target="_blank" class="btn-nav">وصل للبيت 🗺️</a>
+                        </div>
                     </div>
-                    <div>
-                        <span class="distance-badge">${p.distance.toFixed(1)} km</span>
-                        <a href="${gmapsUrl}" target="_blank" class="btn-nav">خريطة 🗺️</a>
-                    </div>
-                </div>
-            `;
+                `;
+            });
         });
-    });
-
-    function clearRequests() {
-        db.ref('rides').remove();
     }
+
+    function clearAllRides() {
+        if(confirm('هل تريد مسح قائمة الركاب وبدء رحلة جديدة؟')) {
+            db.ref('rides').remove();
+        }
+    }
+
+    window.onload = () => {
+        updateDriverLocation();
+        loadAndSortRides();
+    };
 </script>
 
 </body>
