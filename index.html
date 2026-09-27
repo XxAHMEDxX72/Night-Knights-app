@@ -33,6 +33,7 @@
         .btn-clear { background: #ef4444; }
         .btn-optimize { background: #8b5cf6; }
         .btn-theme { background: #64748b; }
+        .btn-admin { background: #e11d48; }
         
         .main-layout { display: flex; flex-direction: column; gap: 15px; flex: 1; }
         @media (min-width: 900px) {
@@ -74,17 +75,15 @@
     </div>
     <button class="btn-sm" style="background:#475569;" onclick="changeRoomId()">🔄 تغيير رمز الغرفة</button>
 </div>
-
-<!-- شريط الأزرار (تم إزالة زر لوحة المشرفين) -->
 <div class="header-actions">
     <button class="btn btn-gps" id="gpsBtn" onclick="toggleLiveTracking()">📍 تفعيل التتبع المباشر (GPS)</button>
     <button class="btn btn-start" id="startTripBtn" onclick="toggleTrip()">🚀 بدء الرحلة وعرض الخريطة</button>
     <button class="btn btn-optimize" onclick="optimizeRoute()">🪄 ترتيب الركاب تلقائيًا</button>
     <button class="btn btn-toggle-qr" onclick="toggleQR()">📱 إظهار / إخفاء الـ QR</button>
     <button class="btn btn-theme" onclick="toggleTheme()">🌗 وضع ليلي/نهاري</button>
+    <a href="admin.html" class="btn btn-admin">🛡️ لوحة المشرفين</a>
     <button class="btn btn-clear" onclick="clearAllRides()">🗑️ مسح ركاب هذه الغرفة</button>
 </div>
-
 <div class="qr-card" id="qrContainer">
     <h2>امسح الـ QR للإنضمام لرحلة السائق 📲</h2>
     <div id="qrcode"></div>
@@ -101,7 +100,6 @@
         </div>
     </div>
 </div>
-
 <!-- JS Libraries -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
@@ -170,9 +168,10 @@
         if (map) return;
         map = L.map('driverMap').setView([driverLat, driverLng], 14);
         
-        tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap contributors'
+        // خريطة جوجل الرسمية (Google Maps Tile)
+        tileLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            attribution: '© Google Maps'
         }).addTo(map);
         
         driverMarker = L.marker([driverLat, driverLng], { icon: carIcon }).addTo(map).bindPopup("موقع السيارة الحالي 🚐").openPopup();

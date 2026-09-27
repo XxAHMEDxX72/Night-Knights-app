@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة المشرفين - متابعة الرحلات</title>
+    <title>لوحة المشرفين - متابعة وإدارة الرحلات</title>
     <!-- Firebase JS SDK (v9 compat) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; transition: background 0.3s, color 0.3s; }
         
@@ -20,8 +22,11 @@
         .btn { border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
         .btn-refresh { background: #0284c7; }
         .btn-clear { background: #ef4444; }
+        .btn-end-all { background: #b91c1c; }
         .btn-back { background: #475569; }
         .btn-theme { background: #64748b; }
+        .btn-stop { background: #dc2626; padding: 6px 12px; font-size: 12px; border-radius: 6px; }
+        .btn-track { background: #10b981; padding: 6px 12px; font-size: 12px; border-radius: 6px; }
         
         /* أزرار الفلترة */
         .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; background: #1e293b; padding: 8px; border-radius: 12px; border: 1px solid #334155; }
@@ -45,14 +50,24 @@
         .badge-ended { background: #7f1d1d; color: #fca5a5; border: 1px solid #dc2626; }
         
         .empty-msg { text-align: center; padding: 40px; color: #64748b; }
+
+        /* نافذة الخريطة المنبثقة (Modal) */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; z-index: 9999; padding: 15px; }
+        .modal-card { background: #1e293b; border: 1px solid #334155; width: 100%; max-width: 800px; border-radius: 16px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); position: relative; }
+        body.light-mode .modal-card { background: #ffffff; border-color: #cbd5e1; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .modal-close { background: #ef4444; border: none; color: white; width: 32px; height: 32px; border-radius: 50%; font-weight: bold; cursor: pointer; font-size: 16px; }
+        #adminMap { height: 450px; width: 100%; border-radius: 12px; border: 1px solid #334155; }
+        body.light-mode #adminMap { border-color: #cbd5e1; }
+        .action-cell { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     </style>
 </head>
 <body>
-
 <div class="header">
-    <h1>🛡️ لوحة المشرفين (سجل ومتابعة الرحلات)</h1>
+    <h1>🛡️ لوحة المشرفين (سجل وإدارة الرحلات)</h1>
     <div class="controls">
         <button class="btn btn-refresh" onclick="loadAllTrips()">🔄 تحديث البيانات</button>
+        <button class="btn btn-end-all" onclick="forceEndAllTrips()">🛑 إنهاء كل الرحلات</button>
         <button class="btn btn-theme" onclick="toggleTheme()">🌗 وضع ليلي/نهاري</button>
         <button class="btn btn-clear" onclick="clearHistory()">🗑️ مسح السجل بالكامل</button>
         <a href="index.html" class="btn btn-back">🔙 شاشة السائق</a>
@@ -78,16 +93,30 @@
                 <th>أسماء الركاب</th>
                 <th>وقت البداية</th>
                 <th>وقت النهاية</th>
+                <th>الإجراءات</th>
             </tr>
         </thead>
         <tbody id="tripsTableBody">
             <tr>
-                <td colspan="8" class="empty-msg">جاري تحميل البيانات...</td>
+                <td colspan="9" class="empty-msg">جاري تحميل البيانات...</td>
             </tr>
         </tbody>
     </table>
 </div>
 
+<!-- Modal الخريطة للمشرف -->
+<div class="modal-overlay" id="mapModal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3 style="margin: 0;" id="modalTitle">📍 تتبع موقع السائق المباشر</h3>
+            <button class="modal-close" onclick="closeMapModal()">✕</button>
+        </div>
+        <div id="adminMap"></div>
+    </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     const firebaseConfig = {
         apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
@@ -101,9 +130,21 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-
+    
     let allTripsList = [];
     let currentFilter = 'all';
+    let adminMap = null;
+    let driverMarker = null;
+    let currentTrackingRoomId = null;
+    let driverLocationListener = null;
+
+    const carIcon = L.divIcon({
+        html: '<div style="font-size: 32px; text-align: center; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">🚐</div>',
+        className: 'car-marker-icon',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+        popupAnchor: [0, -18]
+    });
 
     function toggleTheme() {
         document.body.classList.toggle('light-mode');
@@ -133,7 +174,6 @@
                     });
                 }
             }
-
             // 2. جلب الغرف الجارية حالياً
             return db.ref('rooms').once('value');
         }).then(roomsSnap => {
@@ -141,7 +181,6 @@
             if (roomsData) {
                 for (let roomId in roomsData) {
                     const room = roomsData[roomId];
-                    // التأكد أن الغرفة لم تُسجل كمنتهية بعد
                     const isAlreadyInHistory = allTripsList.some(t => t.roomId === roomId && t.status === 'ended');
                     
                     if (!isAlreadyInHistory) {
@@ -156,19 +195,18 @@
                         
                         allTripsList.push({
                             roomId: roomId,
-                            plateNumber: 'جاري التحديد...',
+                            plateNumber: 'نشطة حالياً',
                             passengersCount: passengersCount,
                             passengersNames: passengersNames,
-                            startTime: 'نشطة حالياً',
+                            startTime: 'جارية الان',
                             endTime: '-',
                             status: 'active',
-                            timestamp: room.driver_location ? room.driver_location.timestamp || Date.now() : Date.now()
+                            timestamp: room.driver_location ? room.driver_location.timestamp || Date.now() : Date.now(),
+                            rawRoomData: room
                         });
                     }
                 }
             }
-
-            // ترتيب الرحلات من الأحدث للأقدم
             allTripsList.sort((a, b) => b.timestamp - a.timestamp);
             updateCounters();
             renderTrips();
@@ -181,7 +219,6 @@
         const total = allTripsList.length;
         const active = allTripsList.filter(t => t.status === 'active').length;
         const ended = allTripsList.filter(t => t.status === 'ended').length;
-
         document.getElementById('countAll').innerText = total;
         document.getElementById('countActive').innerText = active;
         document.getElementById('countEnded').innerText = ended;
@@ -190,24 +227,27 @@
     function renderTrips() {
         const tbody = document.getElementById('tripsTableBody');
         tbody.innerHTML = '';
-
         let filtered = allTripsList;
         if (currentFilter === 'active') filtered = allTripsList.filter(t => t.status === 'active');
         if (currentFilter === 'ended') filtered = allTripsList.filter(t => t.status === 'ended');
-
         if (filtered.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" class="empty-msg">لا توجد رحلات تعرض حالياً في هذا القسم</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" class="empty-msg">لا توجد رحلات تعرض حالياً في هذا القسم</td></tr>`;
             return;
         }
-
         filtered.forEach((trip, index) => {
             const names = trip.passengersNames && trip.passengersNames.length > 0 
                 ? trip.passengersNames.join('، ') 
                 : 'بدون ركاب';
-
             const statusBadge = trip.status === 'active' 
                 ? '<span class="badge badge-active">🟢 جارية</span>' 
                 : '<span class="badge badge-ended">🔴 منتهية</span>';
+            
+            const actionBtn = trip.status === 'active' 
+                ? `<div class="action-cell">
+                     <button class="btn btn-track" onclick="trackDriverLocation('${trip.roomId}')">📍 مكان السائق</button>
+                     <button class="btn btn-stop" onclick="forceEndTrip('${trip.roomId}')">🛑 إنهاء</button>
+                   </div>`
+                : '<span style="color:#64748b; font-size:12px;">مكتملة</span>';
 
             tbody.innerHTML += `
                 <tr>
@@ -219,9 +259,117 @@
                     <td>${names}</td>
                     <td>${trip.startTime || '-'}</td>
                     <td>${trip.endTime || '-'}</td>
+                    <td>${actionBtn}</td>
                 </tr>
             `;
         });
+    }
+
+    // فتح نافذة التتبع وتحديث الخريطة وموقع السائق المباشر
+    function trackDriverLocation(roomId) {
+        currentTrackingRoomId = roomId;
+        document.getElementById('modalTitle').innerText = `📍 تتبع السائق في الغرفة: (${roomId})`;
+        document.getElementById('mapModal').style.display = 'flex';
+
+        if (!adminMap) {
+            adminMap = L.map('adminMap').setView([30.0444, 31.2357], 14);
+            L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+                maxZoom: 20,
+                attribution: '© Google Maps'
+            }).addTo(adminMap);
+        }
+
+        setTimeout(() => { adminMap.invalidateSize(); }, 300);
+
+        if (driverLocationListener) {
+            db.ref(`rooms/${currentTrackingRoomId}/driver_location`).off('value', driverLocationListener);
+        }
+
+        driverLocationListener = db.ref(`rooms/${roomId}/driver_location`).on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data && data.lat && data.lng) {
+                const pos = [data.lat, data.lng];
+                if (driverMarker) {
+                    driverMarker.setLatLng(pos);
+                } else {
+                    driverMarker = L.marker(pos, { icon: carIcon }).addTo(adminMap).bindPopup(`موقع سائق الرحلة (${roomId})`).openPopup();
+                }
+                adminMap.setView(pos, 15);
+            } else {
+                alert("لم يقم السائق بتشغيل الـ GPS بعد أو لا تتوفر إحداثيات حالية.");
+            }
+        });
+    }
+
+    function closeMapModal() {
+        document.getElementById('mapModal').style.display = 'none';
+        if (driverLocationListener && currentTrackingRoomId) {
+            db.ref(`rooms/${currentTrackingRoomId}/driver_location`).off('value', driverLocationListener);
+            driverLocationListener = null;
+        }
+        if (driverMarker) {
+            adminMap.removeLayer(driverMarker);
+            driverMarker = null;
+        }
+    }
+
+    // إنهاء رحلة واحدة
+    function forceEndTrip(roomId) {
+        if (confirm(`هل أنت تأكد من إنهاء الرحلة (${roomId}) وحفظها في السجل؟`)) {
+            const tripTarget = allTripsList.find(t => t.roomId === roomId && t.status === 'active');
+            
+            const historyData = {
+                roomId: roomId,
+                plateNumber: 'تم الإنهاء بواسطة المشرف',
+                startTime: 'تمت بواسطة المشرف',
+                endTime: new Date().toLocaleString('ar-EG'),
+                passengersCount: tripTarget ? tripTarget.passengersCount : 0,
+                passengersNames: tripTarget ? tripTarget.passengersNames : [],
+                timestamp: Date.now()
+            };
+            db.ref('trip_history').push(historyData).then(() => {
+                return db.ref(`rooms/${roomId}`).remove();
+            }).then(() => {
+                alert("تم إنهاء الرحلة بنجاح ونقلها للسجل المنتهي");
+                loadAllTrips();
+            }).catch(err => {
+                console.error("حدث خطأ أثناء إنهاء الرحلة:", err);
+            });
+        }
+    }
+
+    // إنهاء جميع الرحلات الجارية إجبارياً
+    function forceEndAllTrips() {
+        const activeTrips = allTripsList.filter(t => t.status === 'active');
+        if (activeTrips.length === 0) {
+            alert("لا توجد رحلات جارية حالياً لإنهائها!");
+            return;
+        }
+        if (confirm(`هل أنت متأكد من إنهاء جميع الرحلات الجارية حالياً وعددها (${activeTrips.length})؟`)) {
+            const nowTime = new Date().toLocaleString('ar-EG');
+            const promises = [];
+            activeTrips.forEach(trip => {
+                const historyData = {
+                    roomId: trip.roomId,
+                    plateNumber: 'إنهاء جماعي بواسطة المشرف',
+                    startTime: 'تمت بواسطة المشرف',
+                    endTime: nowTime,
+                    passengersCount: trip.passengersCount || 0,
+                    passengersNames: trip.passengersNames || [],
+                    timestamp: Date.now()
+                };
+                const p = db.ref('trip_history').push(historyData).then(() => {
+                    return db.ref(`rooms/${trip.roomId}`).remove();
+                });
+                promises.push(p);
+            });
+            Promise.all(promises).then(() => {
+                alert("تم إنهاء جميع الرحلات الجارية ونقلها إلى السجل بنجاح!");
+                loadAllTrips();
+            }).catch(err => {
+                console.error("حدث خطأ أثناء إنهاء الرحلات الجماعي:", err);
+            });
+        }
     }
 
     function clearHistory() {
@@ -233,10 +381,8 @@
         }
     }
 
-    // التحميل التلقائي والاستماع لأي تحديثات مباشرة
     window.onload = () => {
         loadAllTrips();
-        // تحديث مستمر عند حدوث أي تغيير في داتا الغرف
         db.ref('rooms').on('value', () => loadAllTrips());
     };
 </script>

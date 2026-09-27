@@ -3,29 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تحديد عنوان المنزل والتتبع</title>
+    <title>تحديد عنوان المنزل</title>
     <!-- Firebase JS SDK (v9 compat) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; transition: background 0.3s, color 0.3s; }
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
         body { background: #111827; color: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 15px; }
-        body.light-mode { background: #f3f4f6; color: #111827; }
-
         .card { background: #1f2937; border: 1px solid #374151; padding: 20px; border-radius: 16px; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
-        body.light-mode .card { background: #ffffff; border-color: #cbd5e1; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-
         h2 { text-align: center; margin-top: 0; font-size: 18px; color: #60a5fa; }
         .room-badge { text-align: center; background: #374151; padding: 4px 10px; border-radius: 8px; font-size: 12px; color: #10b981; margin-bottom: 12px; font-weight: bold; }
-        body.light-mode .room-badge { background: #e2e8f0; color: #059669; }
-
         label { display: block; margin: 10px 0 5px; font-size: 13px; color: #9ca3af; }
-        body.light-mode label { color: #4b5563; }
-
         input { width: 100%; padding: 11px; background: #374151; border: 1px solid #4b5563; border-radius: 8px; color: white; font-size: 14px; outline: none; }
-        body.light-mode input { background: #f8fafc; border-color: #cbd5e1; color: #111827; }
         
         .search-wrapper { position: relative; margin-bottom: 10px; }
         .suggestions-list { position: absolute; top: 100%; left: 0; right: 0; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; max-height: 180px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); display: none; }
@@ -34,13 +25,6 @@
         .btn-gps { background: #10b981; color: white; border: none; padding: 9px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 10px; }
         #map { height: 220px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #4b5563; }
         .btn-submit { width: 100%; background: #2563eb; color: white; border: none; padding: 13px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; margin-top: 10px; }
-
-        .tracking-panel { display: none; margin-top: 15px; background: #111827; padding: 12px; border-radius: 12px; border: 1px solid #374151; text-align: center; }
-        body.light-mode .tracking-panel { background: #f8fafc; border-color: #cbd5e1; }
-        .tracking-status { font-weight: bold; font-size: 14px; color: #3b82f6; margin-bottom: 5px; }
-        .eta-badge { font-size: 13px; color: #10b981; font-weight: bold; }
-
-        .car-passenger-icon { transition: left 0.8s linear, top 0.8s linear; }
     </style>
 </head>
 <body>
@@ -59,14 +43,8 @@
     
     <button class="btn-gps" onclick="getCurrentLocation()">📍 تحديث موقعي الحالي بالـ GPS</button>
     <div id="map"></div>
-    <button class="btn-submit" id="submitBtn" onclick="sendHouseLocation()">تأكيد وإرسال للسائق 🚀</button>
-
-    <div class="tracking-panel" id="trackingPanel">
-        <div class="tracking-status" id="trackingStatus">🚘 جاري تتبع موقع السائق...</div>
-        <div class="eta-badge" id="etaBadge">المسافة: -- كم | الوقت التقديري: -- دقيقة</div>
-    </div>
+    <button class="btn-submit" onclick="sendHouseLocation()">تأكيد وإرسال للسائق 🚀</button>
 </div>
-
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -99,9 +77,11 @@
     let driverLiveMarker = null;
 
     const map = L.map('map').setView([lat, lng], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© OpenStreetMap'
+    
+    // خريطة جوجل الرسمية (Google Maps Tile)
+    L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 20,
+        attribution: '© Google Maps'
     }).addTo(map);
 
     const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
@@ -111,19 +91,16 @@
         lng = newLng;
         map.setView([lat, lng], 16);
         marker.setLatLng([lat, lng]);
-        calculateAndShowETA();
     }
 
     marker.on('dragend', () => {
         const pos = marker.getLatLng();
         lat = pos.lat; lng = pos.lng;
-        calculateAndShowETA();
     });
 
     map.on('click', (e) => {
         marker.setLatLng(e.latlng);
         lat = e.latlng.lat; lng = e.latlng.lng;
-        calculateAndShowETA();
     });
 
     function getCurrentLocation() {
@@ -134,72 +111,21 @@
         }
     }
 
-    function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
-        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
-    }
-
-    let currentDriverLat = null;
-    let currentDriverLng = null;
-
-    function moveDriverMarkerSmoothly(targetLat, targetLng) {
-        if (!driverLiveMarker) return;
-        const startLatLng = driverLiveMarker.getLatLng();
-        const startLat = startLatLng.lat;
-        const startLng = startLatLng.lng;
-        
-        let startTime = null;
-        const duration = 800;
-
-        function animate(time) {
-            if (!startTime) startTime = time;
-            const progress = Math.min((time - startTime) / duration, 1);
-            const cLat = startLat + (targetLat - startLat) * progress;
-            const cLng = startLng + (targetLng - startLng) * progress;
-            
-            driverLiveMarker.setLatLng([cLat, cLng]);
-
-            if (progress < 1) {
-                requestAnimationFrame(animate);
-            }
-        }
-        requestAnimationFrame(animate);
-    }
-
-    function calculateAndShowETA() {
-        if (!currentDriverLat || !currentDriverLng) return;
-        const dist = calculateDistance(lat, lng, currentDriverLat, currentDriverLng);
-        const estimatedMinutes = Math.round((dist / 30) * 60);
-        
-        document.getElementById('trackingPanel').style.display = 'block';
-        document.getElementById('etaBadge').innerText = `المسافة: ${dist.toFixed(2)} كم | الوقت التقديري للوصول: ${estimatedMinutes <= 1 ? 'أقل من دقيقة' : estimatedMinutes + ' دقيقة'}`;
-    }
-
     if (roomId) {
         db.ref(`rooms/${roomId}/driver_location`).on('value', (snapshot) => {
             const data = snapshot.val();
             if (data && data.lat && data.lng) {
-                currentDriverLat = data.lat;
-                currentDriverLng = data.lng;
-
                 const driverPos = [data.lat, data.lng];
                 if (driverLiveMarker) {
-                    moveDriverMarkerSmoothly(data.lat, data.lng);
+                    driverLiveMarker.setLatLng(driverPos);
                 } else {
                     driverLiveMarker = L.marker(driverPos, {
                         icon: L.icon({
                             iconUrl: 'https://cdn-icons-png.flaticon.com/512/854/854878.png',
-                            iconSize: [36, 36],
-                            className: 'car-passenger-icon'
+                            iconSize: [32, 32]
                         })
                     }).addTo(map).bindPopup("موقع السيارة الحالي 🚖");
                 }
-                calculateAndShowETA();
             }
         });
     }
@@ -249,6 +175,7 @@
             alert('برجاء كتابة اسمك أولاً!');
             return;
         }
+
         db.ref(`rooms/${roomId}/rides`).push({
             name: name,
             lat: lat,
@@ -257,13 +184,12 @@
         }, (err) => {
             if (!err) {
                 alert('تم إرسال عنوان بيتك للسائق بنجاح!');
-                document.getElementById('trackingPanel').style.display = 'block';
-                document.getElementById('trackingStatus').innerText = '✅ تم إرسال موقعك بنجاح! السائق يتابع رحلته الآن.';
             } else {
                 alert('حدث خطأ في الاتصال.');
             }
         });
     }
+
     window.onload = getCurrentLocation;
 </script>
 </body>
