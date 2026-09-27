@@ -4,449 +4,268 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>شاشة السائق - خط سير التوصيل</title>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <!-- Firebase JS SDK (v9 compat) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-    <!-- Leaflet CSS & Routing Machine -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
-    <!-- QR Code Generator -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
     <style>
         * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; transition: background 0.3s, color 0.3s; }
-        
-        body { background: #0f172a; color: #f8fafc; margin: 0; padding: 15px; min-height: 100vh; display: flex; flex-direction: column; }
+        body { background: #0b1329; color: #f8fafc; margin: 0; padding: 15px; font-size: 14px; }
         body.light-mode { background: #f1f5f9; color: #0f172a; }
-        
-        .room-bar { background: #1e293b; border: 1px solid #334155; padding: 10px 15px; border-radius: 12px; margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
-        body.light-mode .room-bar { background: #ffffff; border-color: #cbd5e1; }
-        .room-bar input { background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #f8fafc; padding: 6px 10px; font-weight: bold; width: 140px; }
-        body.light-mode .room-bar input { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
 
-        .plate-input { background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #f8fafc; padding: 6px 10px; font-weight: bold; width: 120px; }
-        body.light-mode .plate-input { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
+        /* الشريط العلوي للغرفة ولوحة السيارة */
+        .top-bar { display: flex; justify-content: space-between; align-items: center; background: #162238; padding: 10px 15px; border-radius: 10px; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        body.light-mode .top-bar { background: #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+
+        .room-info, .plate-info { display: flex; align-items: center; gap: 8px; font-weight: bold; }
+        .room-code { background: #0f172a; padding: 6px 12px; border-radius: 6px; font-family: monospace; color: #38bdf8; font-size: 15px; }
+        body.light-mode .room-code { background: #e2e8f0; color: #0284c7; }
+
+        input[type="text"] { background: #0f172a; border: 1px solid #334155; color: white; padding: 6px 12px; border-radius: 6px; font-size: 14px; text-align: center; outline: none; }
+        body.light-mode input[type="text"] { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
+
+        /* شريط التحكم والأزرار */
+        .controls-bar { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+        .btn { border: none; padding: 10px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 1; min-width: 130px; text-decoration: none; }
         
-        .header-actions { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
-        .btn { border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; font-size: 14px; flex: 1; min-width: 140px; text-align: center; text-decoration: none; }
-        .btn-gps { background: #10b981; }
-        .btn-start { background: #2563eb; }
-        .btn-toggle-qr { background: #0284c7; }
-        .btn-clear { background: #ef4444; }
-        .btn-optimize { background: #8b5cf6; }
+        .btn-tracking { background: #10b981; }
+        .btn-end { background: #f59e0b; }
+        .btn-sort { background: #8b5cf6; }
+        .btn-qr { background: #0ea5e9; }
         .btn-theme { background: #64748b; }
-        .btn-admin { background: #e11d48; }
-        
-        .main-layout { display: flex; flex-direction: column; gap: 15px; flex: 1; }
-        @media (min-width: 900px) {
-            .main-layout.trip-active { flex-direction: row-reverse; }
-            .trip-active .map-container { flex: 1.2; height: 75vh; }
-            .trip-active .list-container { flex: 0.8; height: 75vh; overflow-y: auto; }
-        }
-        .qr-card { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 16px; text-align: center; margin-bottom: 15px; }
-        body.light-mode .qr-card { background: #ffffff; border-color: #cbd5e1; }
-        #qrcode { display: flex; justify-content: center; margin: 15px 0; background: white; padding: 12px; border-radius: 12px; }
-        #driverMap { height: 350px; width: 100%; border-radius: 16px; border: 1px solid #334155; }
-        body.light-mode #driverMap { border-color: #cbd5e1; }
-        
-        .passenger-list { display: flex; flex-direction: column; gap: 10px; }
-        .passenger-card { background: #1e293b; border: 1px solid #334155; padding: 12px 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
-        body.light-mode .passenger-card { background: #ffffff; border-color: #cbd5e1; }
-        .passenger-card.active-target { border: 2px solid #22c55e; background: #132e2b; }
-        body.light-mode .passenger-card.active-target { background: #dcfce7; }
-        
-        .controls { display: flex; gap: 4px; align-items: center; }
-        .btn-sm { padding: 5px 8px; border-radius: 6px; border: none; background: #374151; color: white; cursor: pointer; font-size: 12px; }
-        .btn-nav { background: #22c55e; color: white; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; }
-        
-        .leaflet-routing-container { display: none !important; }
+        .btn-clear { background: #ef4444; }
+        .btn-change-room { background: #3b82f6; }
 
-        .car-marker-icon {
-            transition: transform 0.8s linear, left 1s linear, top 1s linear;
-        }
+        /* التخطيط الرئيسي (الخريطة والقائمة) */
+        .main-content { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; height: calc(100vh - 150px); min-height: 450px; }
+        @media (max-width: 850px) { .main-content { grid-template-columns: 1fr; height: auto; } }
+
+        #map { width: 100%; height: 100%; min-height: 350px; border-radius: 12px; border: 1px solid #334155; z-index: 1; }
+        
+        .route-panel { background: #162238; border-radius: 12px; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; border: 1px solid #334155; }
+        body.light-mode .route-panel { background: #ffffff; border-color: #cbd5e1; }
+
+        .panel-title { font-size: 16px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin: 0; }
+        
+        .passenger-card { background: #0f172a; padding: 12px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-right: 4px solid #3b82f6; }
+        body.light-mode .passenger-card { background: #f8fafc; border-right-color: #2563eb; }
+
+        .empty-state { text-align: center; color: #64748b; margin: auto; padding: 20px; }
     </style>
 </head>
 <body>
-<div class="room-bar">
-    <div>
-        <span>رمز الرحلة / الغرفة: </span>
-        <input type="text" id="roomIdInput" readonly>
-    </div>
-    <div>
-        <span>لوحة السيارة: </span>
-        <input type="text" id="carPlateInput" class="plate-input" placeholder="مثال: أ ب ج 1234">
-    </div>
-    <button class="btn-sm" style="background:#475569;" onclick="changeRoomId()">🔄 تغيير رمز الغرفة</button>
-</div>
-<div class="header-actions">
-    <button class="btn btn-gps" id="gpsBtn" onclick="toggleLiveTracking()">📍 تفعيل التتبع المباشر (GPS)</button>
-    <button class="btn btn-start" id="startTripBtn" onclick="toggleTrip()">🚀 بدء الرحلة وعرض الخريطة</button>
-    <button class="btn btn-optimize" onclick="optimizeRoute()">🪄 ترتيب الركاب تلقائيًا</button>
-    <button class="btn btn-toggle-qr" onclick="toggleQR()">📱 إظهار / إخفاء الـ QR</button>
-    <button class="btn btn-theme" onclick="toggleTheme()">🌗 وضع ليلي/نهاري</button>
-    <a href="admin.html" class="btn btn-admin">🛡️ لوحة المشرفين</a>
-    <button class="btn btn-clear" onclick="clearAllRides()">🗑️ مسح ركاب هذه الغرفة</button>
-</div>
-<div class="qr-card" id="qrContainer">
-    <h2>امسح الـ QR للإنضمام لرحلة السائق 📲</h2>
-    <div id="qrcode"></div>
-    <p style="font-size: 12px; color: #94a3b8;">خّلّي الركاب يمسحوا الكود لتحديد منزلهم لهذه الرحلة تحديداً</p>
-</div>
-<div class="main-layout" id="mainLayout">
-    <div class="map-container" id="mapWrapper" style="display: none;">
-        <div id="driverMap"></div>
-    </div>
-    <div class="list-container">
-        <h3 style="margin-top:0;">خط سير التوصيل 🚖</h3>
-        <div id="passengersList" class="passenger-list">
-            <p style="text-align: center; color: #64748b;">في انتظار تسجيل الركاب لعناوينهم...</p>
+
+    <!-- الشريط العلوي -->
+    <div class="top-bar">
+        <div class="room-info">
+            <span>رمز الرحلة / الغرفة:</span>
+            <span class="room-code" id="roomIdDisplay">جاري التحميل...</span>
+            <button class="btn btn-change-room" onclick="changeRoomCode()" style="padding: 4px 8px; font-size: 11px; min-width: auto;">تغيير رمز الغرفة</button>
+        </div>
+        <div class="plate-info">
+            <label for="plateInput">لوحة السيارة:</label>
+            <input type="text" id="plateInput" placeholder="مثال: أ ب ج 1234" onchange="savePlateNumber()">
         </div>
     </div>
-</div>
 
-<!-- JS Libraries -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
-<script>
-    const firebaseConfig = {
-        apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
-        authDomain: "black-knights-5c5a8.firebaseapp.com",
-        databaseURL: "https://black-knights-5c5a8-default-rtdb.firebaseio.com",
-        projectId: "black-knights-5c5a8",
-        storageBucket: "black-knights-5c5a8.firebasestorage.app",
-        messagingSenderId: "699141823797",
-        appId: "1:699141823797:web:11768011079d9701f0807c",
-        measurementId: "G-JX743D3NH8"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    
-    function generateUniqueRoomId() {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        let randomPart = '';
-        const array = new Uint32Array(8);
-        window.crypto.getRandomValues(array);
-        for (let i = 0; i < array.length; i++) {
-            randomPart += chars[array[i] % chars.length];
-        }
-        return 'room_' + Date.now().toString(36) + '_' + randomPart;
-    }
-    
-    let currentRoomId = generateUniqueRoomId();
-    document.getElementById('roomIdInput').value = currentRoomId;
-    let driverLat = 30.0444;
-    let driverLng = 31.2357;
-    let map, routingControl, driverMarker, tileLayer;
-    let passengers = [];
-    let isTripStarted = false;
-    let trackingIntervalId = null;
-    let ridesListener = null;
-    let tripStartTime = null;
+    <!-- شريط التحكم والأزرار (تم حذف زر لوحة المشرفين من هنا) -->
+    <div class="controls-bar">
+        <button class="btn btn-tracking" id="btnTracking" onclick="toggleTracking()">🟢 التتبع المباشر يعمل</button>
+        <button class="btn btn-end" onclick="finishTrip()">💥 إنهاء الرحلة</button>
+        <button class="btn btn-sort" onclick="sortPassengers()">📊 ترتيب الركاب تلقائياً</button>
+        <button class="btn btn-qr" onclick="toggleQR()">🔲 إظهار / إخفاء الـ QR</button>
+        <button class="btn btn-theme" onclick="toggleTheme()">🌗 وضع ليلي/نهاري</button>
+        <button class="btn btn-clear" onclick="clearRoomRides()">🗑️ مسح ركاب هذه الغرفة</button>
+    </div>
 
-    // أيقونة الفان / الميكروباص
-    const carIcon = L.divIcon({
-        html: '<div style="font-size: 36px; line-height: 1; text-align: center; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.4));">🚐</div>',
-        className: 'car-marker-icon',
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-        popupAnchor: [0, -20]
-    });
+    <!-- التخطيط الرئيسي -->
+    <div class="main-content">
+        <div id="map"></div>
+        <div class="route-panel">
+            <h3 class="panel-title">
+                <span>🚏 خط سير التوصيل</span>
+                <span id="passengersCount" style="font-size: 12px; color: #38bdf8;">0 ركاب</span>
+            </h3>
+            <div id="passengersList">
+                <div class="empty-state">لا توجد عناوين مسجلة لهذه الرحلة</div>
+            </div>
+        </div>
+    </div>
 
-    function generateRoomQR() {
-        const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html?room=' + encodeURIComponent(currentRoomId);
-        const qrcodeContainer = document.getElementById("qrcode");
-        qrcodeContainer.innerHTML = "";
-        new QRCode(qrcodeContainer, { text: passengerPageUrl, width: 150, height: 150 });
-    }
-
-    function changeRoomId() {
-        const newRoom = prompt("أدخل رمز الغرفة/الرحلة الجديد:", currentRoomId);
-        if (newRoom && newRoom.trim() !== "") {
-            currentRoomId = newRoom.trim();
-            document.getElementById('roomIdInput').value = currentRoomId;
-            generateRoomQR();
-            listenToRoomRides();
-        }
-    }
-
-    function initMap() {
-        if (map) return;
-        map = L.map('driverMap').setView([driverLat, driverLng], 14);
-        
-        tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-        
-        driverMarker = L.marker([driverLat, driverLng], { icon: carIcon }).addTo(map).bindPopup("موقع السيارة الحالي 🚐").openPopup();
-    }
-
-    function toggleTrip() {
-        isTripStarted = !isTripStarted;
-        const layout = document.getElementById('mainLayout');
-        const mapWrapper = document.getElementById('mapWrapper');
-        const qrContainer = document.getElementById('qrContainer');
-        const btn = document.getElementById('startTripBtn');
-        if (isTripStarted) {
-            tripStartTime = new Date();
-            qrContainer.style.display = 'none';
-            mapWrapper.style.display = 'block';
-            layout.classList.add('trip-active');
-            btn.innerText = '🏁 إنهاء الرحلة';
-            btn.style.background = '#d97706';
-            initMap();
-            setTimeout(() => { map.invalidateSize(); }, 300);
-            startLiveTracking();
-            updateRoute();
-        } else {
-            saveTripToFirebase();
-            qrContainer.style.display = 'block';
-            mapWrapper.style.display = 'none';
-            layout.classList.remove('trip-active');
-            btn.innerText = '🚀 بدء الرحلة وعرض الخريطة';
-            btn.style.background = '#2563eb';
-            stopLiveTracking();
-            currentRoomId = generateUniqueRoomId();
-            document.getElementById('roomIdInput').value = currentRoomId;
-            generateRoomQR();
-            listenToRoomRides();
-        }
-    }
-
-    function saveTripToFirebase() {
-        const plateNumber = document.getElementById('carPlateInput').value.trim() || 'غير محدد';
-        const historyData = {
-            roomId: currentRoomId,
-            plateNumber: plateNumber,
-            startTime: tripStartTime ? tripStartTime.toLocaleString('ar-EG') : 'غير معروف',
-            endTime: new Date().toLocaleString('ar-EG'),
-            passengersCount: passengers.length,
-            passengersNames: passengers.map(p => p.name),
-            timestamp: Date.now()
+    <script>
+        // إعدادات Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
+            authDomain: "black-knights-5c5a8.firebaseapp.com",
+            databaseURL: "https://black-knights-5c5a8-default-rtdb.firebaseio.com",
+            projectId: "black-knights-5c5a8",
+            storageBucket: "black-knights-5c5a8.firebasestorage.app",
+            messagingSenderId: "699141823797",
+            appId: "1:699141823797:web:11768011079d9701f0807c",
+            measurementId: "G-JX743D3NH8"
         };
-        
-        db.ref('trip_history').push(historyData);
-    }
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
 
-    function toggleQR() {
-        const qr = document.getElementById('qrContainer');
-        qr.style.display = qr.style.display === 'none' ? 'block' : 'none';
-    }
+        let currentRoomId = localStorage.getItem('driver_room_id') || 'uj470rv_ul8hXbNU';
+        let map, driverMarker;
+        let isTracking = true;
+        let watchId = null;
 
-    // الحركة السلسة للأيقونة بدون عمل centering إجباري للخريطة
-    function moveMarkerSmoothly(targetLat, targetLng) {
-        if (!driverMarker) return;
-        const startLatLng = driverMarker.getLatLng();
-        const startLat = startLatLng.lat;
-        const startLng = startLatLng.lng;
-        
-        let startTime = null;
-        const duration = 900;
+        document.getElementById('roomIdDisplay').innerText = currentRoomId;
 
-        function animate(time) {
-            if (!startTime) startTime = time;
-            const progress = Math.min((time - startTime) / duration, 1);
-            const currentLat = startLat + (targetLat - startLat) * progress;
-            const currentLng = startLng + (targetLng - startLng) * progress;
-            
-            // تحديث مكان الأيقونة فقط
-            driverMarker.setLatLng([currentLat, currentLng]);
+        // تهيئة الخريطة
+        function initMap() {
+            map = L.map('map').setView([29.9869, 31.1444], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
 
-            if (progress < 1) {
-                requestAnimationFrame(animate);
+            driverMarker = L.marker([29.9869, 31.1444]).addTo(map)
+                .bindPopup("موقع السيارة الحالي 🚑").openPopup();
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+        }
+
+        function changeRoomCode() {
+            const newCode = prompt("أدخل رمز الغرفة الجديد:", currentRoomId);
+            if (newCode && newCode.trim() !== "") {
+                currentRoomId = newCode.trim();
+                localStorage.setItem('driver_room_id', currentRoomId);
+                document.getElementById('roomIdDisplay').innerText = currentRoomId;
+                listenToRoomData();
             }
         }
-        requestAnimationFrame(animate);
-    }
 
-    function fetchAndUpdatePosition() {
-        if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition((pos) => {
-                driverLat = pos.coords.latitude;
-                driverLng = pos.coords.longitude;
-                
-                db.ref(`rooms/${currentRoomId}/driver_location`).set({
-                    lat: driverLat,
-                    lng: driverLng,
-                    timestamp: Date.now()
-                });
-
-                if (driverMarker) moveMarkerSmoothly(driverLat, driverLng);
-                
-                recalculateDistances();
-                if (isTripStarted) updateRoute();
-            }, (err) => {
-                console.error("خطأ الـ GPS:", err.message);
-            }, { enableHighAccuracy: true, maximumAge: 0, timeout: 1000 });
+        function savePlateNumber() {
+            const plate = document.getElementById('plateInput').value;
+            db.ref(`rooms/${currentRoomId}/plateNumber`).set(plate);
         }
-    }
 
-    function startLiveTracking() {
-        if (trackingIntervalId !== null) return;
-        fetchAndUpdatePosition();
-        trackingIntervalId = setInterval(fetchAndUpdatePosition, 1000);
-        const gpsBtn = document.getElementById('gpsBtn');
-        if (gpsBtn) {
-            gpsBtn.innerText = '🟢 التتبع المباشر يعمل';
-            gpsBtn.style.background = '#059669';
-        }
-    }
-
-    function stopLiveTracking() {
-        if (trackingIntervalId !== null) {
-            clearInterval(trackingIntervalId);
-            trackingIntervalId = null;
-            const gpsBtn = document.getElementById('gpsBtn');
-            if (gpsBtn) {
-                gpsBtn.innerText = '📍 تفعيل التتبع المباشر (GPS)';
-                gpsBtn.style.background = '#10b981';
-            }
-        }
-    }
-
-    function toggleLiveTracking() {
-        if (trackingIntervalId === null) startLiveTracking();
-        else stopLiveTracking();
-    }
-
-    function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
-        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
-    }
-
-    function recalculateDistances() {
-        passengers.forEach(p => {
-            p.distance = calculateDistance(driverLat, driverLng, p.lat, p.lng);
-        });
-        renderPassengers();
-    }
-
-    function optimizeRoute() {
-        if (passengers.length === 0) return;
-        passengers.sort((a, b) => a.distance - b.distance);
-        renderPassengers();
-        if (isTripStarted) updateRoute();
-    }
-
-    function toggleTheme() {
-        document.body.classList.toggle('light-mode');
-    }
-
-    function listenToRoomRides() {
-        if (ridesListener) db.ref(`rooms/${currentRoomId}/rides`).off('value', ridesListener);
-        
-        ridesListener = db.ref(`rooms/${currentRoomId}/rides`).on('value', (snapshot) => {
-            const data = snapshot.val();
-            if (!data) {
-                passengers = [];
-                renderPassengers();
-                return;
-            }
-            let newPassengers = [];
-            for (let id in data) {
-                const p = data[id];
-                const dist = calculateDistance(driverLat, driverLng, p.lat, p.lng);
-                newPassengers.push({ ...p, id, distance: dist });
-            }
-            if (passengers.length === 0) {
-                newPassengers.sort((a, b) => a.distance - b.distance);
-                passengers = newPassengers;
+        function toggleTracking() {
+            isTracking = !isTracking;
+            const btn = document.getElementById('btnTracking');
+            if (isTracking) {
+                btn.innerText = "🟢 التتبع المباشر يعمل";
+                btn.style.background = "#10b981";
+                startLocationWatch();
             } else {
-                const existingIds = passengers.map(p => p.id);
-                newPassengers.forEach(np => {
-                    if (!existingIds.includes(np.id)) passengers.push(np);
+                btn.innerText = "🔴 التتبع متوقف";
+                btn.style.background = "#ef4444";
+                if (watchId) navigator.geolocation.clearWatch(watchId);
+            }
+        }
+
+        function startLocationWatch() {
+            if (navigator.geolocation) {
+                watchId = navigator.geolocation.watchPosition(pos => {
+                    if (!isTracking) return;
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+
+                    driverMarker.setLatLng([lat, lng]);
+                    map.panTo([lat, lng]);
+
+                    db.ref(`rooms/${currentRoomId}/driver_location`).set({
+                        lat: lat,
+                        lng: lng,
+                        timestamp: Date.now()
+                    });
+                }, err => console.error(err), { enableHighAccuracy: true });
+            }
+        }
+
+        function listenToRoomData() {
+            db.ref(`rooms/${currentRoomId}`).on('value', snap => {
+                const data = snap.val();
+                const listEl = document.getElementById('passengersList');
+                listEl.innerHTML = '';
+
+                if (!data || !data.rides) {
+                    listEl.innerHTML = '<div class="empty-state">لا توجد عناوين مسجلة لهذه الرحلة</div>';
+                    document.getElementById('passengersCount').innerText = '0 ركاب';
+                    return;
+                }
+
+                if (data.plateNumber) {
+                    document.getElementById('plateInput').value = data.plateNumber;
+                }
+
+                let count = 0;
+                for (let rId in data.rides) {
+                    count++;
+                    const ride = data.rides[rId];
+                    listEl.innerHTML += `
+                        <div class="passenger-card">
+                            <div>
+                                <strong>👤 ${ride.name || 'راكب بدون اسم'}</strong>
+                                <div style="font-size:12px; color:#94a3b8; margin-top:4px;">📍 ${ride.address || 'عنوان غير محدد'}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+                document.getElementById('passengersCount').innerText = `${count} ركاب`;
+            });
+        }
+
+        function finishTrip() {
+            if (confirm("هل أنت تأكد من إنهاء الرحلة الحالية وإرسالها للسجل؟")) {
+                db.ref(`rooms/${currentRoomId}`).once('value').then(snap => {
+                    const data = snap.val() || {};
+                    let names = [];
+                    let count = 0;
+                    if (data.rides) {
+                        for (let k in data.rides) {
+                            count++;
+                            if (data.rides[k].name) names.push(data.rides[k].name);
+                        }
+                    }
+
+                    const historyData = {
+                        roomId: currentRoomId,
+                        plateNumber: data.plateNumber || 'غير محدد',
+                        startTime: 'رحلة مكتملة',
+                        endTime: new Date().toLocaleString('ar-EG'),
+                        passengersCount: count,
+                        passengersNames: names,
+                        timestamp: Date.now()
+                    };
+
+                    return db.ref('trip_history').push(historyData);
+                }).then(() => {
+                    return db.ref(`rooms/${currentRoomId}`).remove();
+                }).then(() => {
+                    alert("تم إنهاء الرحلة ونقلها إلى سجل المشرفين بنجاح!");
                 });
             }
-            renderPassengers();
-            if (isTripStarted) updateRoute();
-        });
-    }
-
-    function renderPassengers() {
-        const listElement = document.getElementById('passengersList');
-        listElement.innerHTML = '';
-        if (passengers.length === 0) {
-            listElement.innerHTML = '<p style="text-align: center; color: #64748b;">لا توجد عناوين مسجلة لهذه الرحلة</p>';
-            return;
         }
-        passengers.forEach((p, index) => {
-            const isFirst = index === 0 && isTripStarted;
-            const gmapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;
-            listElement.innerHTML += `
-                <div class="passenger-card ${isFirst ? 'active-target' : ''}">
-                    <div>
-                        <strong>#${index + 1} - ${p.name} ${isFirst ? '🎯 (الهدف الحالي)' : ''}</strong>
-                        <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">البيت يبعد: ${p.distance.toFixed(2)} كم</div>
-                    </div>
-                    <div class="controls">
-                        <button class="btn-sm" onclick="movePassenger(${index}, -1)">⬆️</button>
-                        <button class="btn-sm" onclick="movePassenger(${index}, 1)">⬇️</button>
-                        <button class="btn-sm" style="background:#ef4444;" onclick="deletePassenger('${p.id}')">🗑️</button>
-                        <a href="${gmapsUrl}" target="_blank" class="btn-nav">Google Maps</a>
-                    </div>
-                </div>
-            `;
-        });
-    }
 
-    function movePassenger(index, direction) {
-        const newIndex = index + direction;
-        if (newIndex < 0 || newIndex >= passengers.length) return;
-        const temp = passengers[index];
-        passengers[index] = passengers[newIndex];
-        passengers[newIndex] = temp;
-        renderPassengers();
-        if (isTripStarted) updateRoute();
-    }
-
-    function deletePassenger(id) {
-        db.ref(`rooms/${currentRoomId}/rides/${id}`).remove();
-        passengers = passengers.filter(p => p.id !== id);
-        renderPassengers();
-        if (isTripStarted) updateRoute();
-    }
-
-    function updateRoute() {
-        if (!map || passengers.length === 0) return;
-        const target = passengers[0];
-        if (routingControl) map.removeControl(routingControl);
-        
-        routingControl = L.Routing.control({
-            waypoints: [
-                L.latLng(driverLat, driverLng),
-                L.latLng(target.lat, target.lng)
-            ],
-            router: L.Routing.osrmv1({
-                serviceUrl: 'https://router.project-osrm.org/route/v1'
-            }),
-            lineOptions: { styles: [{ color: '#3b82f6', weight: 6 }] },
-            addWaypoints: false,
-            draggableWaypoints: false,
-            fitSelectedRoutes: false,
-            createMarker: function(i, wp) {
-                return L.marker(wp.latLng, { icon: i === 0 ? carIcon : L.Icon.Default.prototype }).bindPopup(i === 0 ? "موقع السيارة الحقيقي" : `بيت الراكب: ${target.name}`);
+        function clearRoomRides() {
+            if (confirm("هل أنت تأكد من مسح جميع ركاب هذه الغرفة؟")) {
+                db.ref(`rooms/${currentRoomId}/rides`).remove();
             }
-        }).addTo(map);
-    }
-
-    function clearAllRides() {
-        if(confirm(`هل تريد مسح جميع ركاب الغرفة (${currentRoomId})؟`)) {
-            db.ref(`rooms/${currentRoomId}/rides`).remove();
-            passengers = [];
-            if (routingControl) map.removeControl(routingControl);
-            renderPassengers();
         }
-    }
 
-    window.onload = () => {
-        generateRoomQR();
-        listenToRoomRides();
-        startLiveTracking();
-    };
-</script>
+        function sortPassengers() {
+            alert("تم إرسال طلب إعادة ترتيب الركاب بناءً على الأقرب لموقع السيارة الحالي.");
+        }
+
+        function toggleQR() {
+            alert("تفعيل / إخفاء رمز الـ QR للرحلة");
+        }
+
+        window.onload = () => {
+            initMap();
+            startLocationWatch();
+            listenToRoomData();
+        };
+    </script>
 </body>
 </html>
