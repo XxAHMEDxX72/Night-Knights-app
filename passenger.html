@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>تحديد عنوان المنزل</title>
-    <!-- Firebase JS SDK (v9 compat) -->
+    <!-- Firebase JS SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <!-- Leaflet CSS -->
@@ -19,32 +19,9 @@
         input { width: 100%; padding: 11px; background: #374151; border: 1px solid #4b5563; border-radius: 8px; color: white; font-size: 14px; outline: none; }
         
         .search-wrapper { position: relative; margin-bottom: 10px; }
-        
-        /* تنسيقات قائمة اقتراحات جوجل ماب الرسمية لتتناسب مع الثيم الداكن */
-        .pac-container {
-            background-color: #1f2937 !important;
-            border: 1px solid #4b5563 !important;
-            border-radius: 8px !important;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
-            font-family: system-ui, -apple-system, sans-serif !important;
-            z-index: 9999 !important;
-        }
-        .pac-item {
-            color: #e5e7eb !important;
-            border-top: 1px solid #374151 !important;
-            padding: 8px 10px !important;
-            cursor: pointer;
-        }
-        .pac-item:hover {
-            background-color: #374151 !important;
-        }
-        .pac-item-query {
-            color: #60a5fa !important;
-            font-size: 13px !important;
-        }
-        .pac-matched {
-            color: #38bdf8 !important;
-        }
+        .suggestions-list { position: absolute; top: 100%; left: 0; right: 0; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); display: none; }
+        .suggestion-item { padding: 10px; border-bottom: 1px solid #374151; font-size: 12px; cursor: pointer; color: #e5e7eb; }
+        .suggestion-item:hover { background: #374151; color: #60a5fa; }
 
         .btn-gps { background: #10b981; color: white; border: none; padding: 9px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 10px; }
         #map { height: 220px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #4b5563; }
@@ -59,9 +36,10 @@
     <label>اسم الراكب:</label>
     <input type="text" id="passengerName" placeholder="اكتب اسمك..." required>
     
-    <label>ابحث عن الشارع / منطقة / محطة عبر Google Maps:</label>
+    <label>ابحث عن الشارع / منطقة / محطة (في مصر):</label>
     <div class="search-wrapper">
-        <input type="text" id="searchInput" placeholder="اكتب العنوان هنا لتظهر اقتراحات جوجل...">
+        <input type="text" id="searchInput" placeholder="اكتب العنوان..." oninput="handleSearchInput()">
+        <div class="suggestions-list" id="suggestionsList"></div>
     </div>
     
     <button class="btn-gps" onclick="getCurrentLocation()">📍 تحديث موقعي الحالي بالـ GPS</button>
@@ -72,10 +50,9 @@
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-<!-- Google Maps JavaScript API (Places Library) -->
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAnKuu5azHrQ0ih17jhHyUg4X3eNVnMQh8&libraries=places&language=ar&region=EG"></script>
-
 <script>
+    const GEOAPIFY_API_KEY = "3b48ae3c773248708cf7756b72e27473"; // ضع مفتاح Geoapify المجاني هنا
+
     const firebaseConfig = {
         apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
         authDomain: "black-knights-5c5a8.firebaseapp.com",
@@ -91,7 +68,6 @@
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room');
     if (!roomId) {
-        alert("خطأ: رابط الصفحة غير مكتمل أو لا يحتوي على رمز الرحلة!");
         document.getElementById('roomBadge').innerText = "خطأ: رحلة غير معروفة";
         document.getElementById('roomBadge').style.color = "#ef4444";
     } else {
@@ -100,10 +76,11 @@
     
     let lat = 30.0444;
     let lng = 31.2357;
+    let searchTimeout = null;
     let driverLiveMarker = null;
     const map = L.map('map').setView([lat, lng], 13);
     
-    // طبقة الخريطة المباشرة
+    // عرض الخريطة بطبقة جوجل ماب المباشرة (شغالة مجاناً بدون كارت)
     L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
         maxZoom: 20,
         attribution: '© Google Maps'
@@ -136,26 +113,40 @@
         }
     }
 
-    // تفعيل محرك بحث Google Places Autocomplete الرسمية
-    function initGooglePlacesSearch() {
-        const input = document.getElementById('searchInput');
-        if (typeof google !== 'undefined' && google.maps && google.maps.places) {
-            const autocomplete = new google.maps.places.Autocomplete(input, {
-                componentRestrictions: { country: "eg" }, // تقييد البحث داخل مصر
-                fields: ["geometry", "name", "formatted_address"]
-            });
-
-            autocomplete.addListener('place_changed', () => {
-                const place = autocomplete.getPlace();
-                if (!place.geometry || !place.geometry.location) {
-                    return;
-                }
-
-                const newLat = place.geometry.location.lat();
-                const newLng = place.geometry.location.lng();
-                updateMarker(newLat, newLng);
-            });
+    // محرك بحث سريع ودقيق ومجاني 100% بدون كارت دفع
+    function handleSearchInput() {
+        clearTimeout(searchTimeout);
+        const query = document.getElementById('searchInput').value.trim();
+        const list = document.getElementById('suggestionsList');
+        if (query.length < 3) {
+            list.style.display = 'none';
+            return;
         }
+        searchTimeout = setTimeout(async () => {
+            try {
+                const res = await fetch(`https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(query)}&filter=countrycode:eg&lang=ar&apiKey=${GEOAPIFY_API_KEY}`);
+                const data = await res.json();
+                list.innerHTML = '';
+                if (data && data.features && data.features.length > 0) {
+                    list.style.display = 'block';
+                    data.features.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'suggestion-item';
+                        div.innerText = item.properties.formatted;
+                        div.onclick = () => {
+                            updateMarker(item.properties.lat, item.properties.lon);
+                            document.getElementById('searchInput').value = item.properties.formatted;
+                            list.style.display = 'none';
+                        };
+                        list.appendChild(div);
+                    });
+                } else {
+                    list.style.display = 'none';
+                }
+            } catch (e) {
+                list.style.display = 'none';
+            }
+        }, 300);
     }
 
     if (roomId) {
@@ -201,10 +192,7 @@
         });
     }
 
-    window.onload = () => {
-        getCurrentLocation();
-        initGooglePlacesSearch();
-    };
+    window.onload = getCurrentLocation;
 </script>
 </body>
 </html>
