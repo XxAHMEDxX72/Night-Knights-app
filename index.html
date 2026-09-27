@@ -154,14 +154,13 @@
     document.getElementById('roomIdInput').value = currentRoomId;
     let driverLat = 30.0444;
     let driverLng = 31.2357;
-    let map, routingControl, driverMarker, qrCodeObj;
+    let map, routingControl, driverMarker, tileLayer;
     let passengers = [];
     let isTripStarted = false;
     let trackingIntervalId = null;
     let ridesListener = null;
     let tripStartTime = null;
 
-    // Custom Car Icon
     const carIcon = L.icon({
         iconUrl: 'https://cdn-icons-png.flaticon.com/512/854/854878.png',
         iconSize: [40, 40],
@@ -174,7 +173,7 @@
         const passengerPageUrl = window.location.href.replace('index.html', '').replace(/\/$/, '') + '/passenger.html?room=' + encodeURIComponent(currentRoomId);
         const qrcodeContainer = document.getElementById("qrcode");
         qrcodeContainer.innerHTML = "";
-        qrCodeObj = new QRCode(qrcodeContainer, { text: passengerPageUrl, width: 150, height: 150 });
+        new QRCode(qrcodeContainer, { text: passengerPageUrl, width: 150, height: 150 });
     }
 
     function changeRoomId() {
@@ -187,13 +186,20 @@
         }
     }
 
+    function getTileUrl() {
+        return document.body.classList.contains('light-mode') 
+            ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+            : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    }
+
     function initMap() {
         if (map) return;
         map = L.map('driverMap').setView([driverLat, driverLng], 14);
         
-        const isNight = isNightTime();
-        const tileStyle = isNight ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-        L.tileLayer(tileStyle).addTo(map);
+        tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
         
         driverMarker = L.marker([driverLat, driverLng], { icon: carIcon }).addTo(map).bindPopup("موقع السيارة الحالي 🚖").openPopup();
     }
@@ -277,7 +283,6 @@
         qr.style.display = qr.style.display === 'none' ? 'block' : 'none';
     }
 
-    // الحركة السلسة للمؤشر Smooth Animation
     function moveMarkerSmoothly(targetLat, targetLng) {
         if (!driverMarker) return;
         const startLatLng = driverMarker.getLatLng();
@@ -285,7 +290,7 @@
         const startLng = startLatLng.lng;
         
         let startTime = null;
-        const duration = 900; // milliseconds
+        const duration = 900;
 
         function animate(time) {
             if (!startTime) startTime = time;
@@ -327,10 +332,8 @@
 
     function startLiveTracking() {
         if (trackingIntervalId !== null) return;
-        
         fetchAndUpdatePosition();
         trackingIntervalId = setInterval(fetchAndUpdatePosition, 1000);
-        
         const gpsBtn = document.getElementById('gpsBtn');
         if (gpsBtn) {
             gpsBtn.innerText = '🟢 التتبع المباشر يعمل';
@@ -377,19 +380,6 @@
         passengers.sort((a, b) => a.distance - b.distance);
         renderPassengers();
         if (isTripStarted) updateRoute();
-    }
-
-    function isNightTime() {
-        const hour = new Date().getHours();
-        return hour < 6 || hour >= 18;
-    }
-
-    function autoApplyTheme() {
-        if (isNightTime()) {
-            document.body.classList.remove('light-mode');
-        } else {
-            document.body.classList.add('light-mode');
-        }
     }
 
     function toggleTheme() {
@@ -479,7 +469,7 @@
                 L.latLng(driverLat, driverLng),
                 L.latLng(target.lat, target.lng)
             ],
-            lineOptions: { styles: [{ color: '#3b82f6', weight: 6 }] },
+            lineOptions: { styles: [{ color: '#2563eb', weight: 6 }] },
             createMarker: function(i, wp) {
                 return L.marker(wp.latLng, { icon: i === 0 ? carIcon : L.Icon.Default.prototype }).bindPopup(i === 0 ? "موقع السيارة الحقيقي" : `بيت الراكب: ${target.name}`);
             }
@@ -496,7 +486,6 @@
     }
 
     window.onload = () => {
-        autoApplyTheme();
         generateRoomQR();
         listenToRoomRides();
         startLiveTracking();

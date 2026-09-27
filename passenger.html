@@ -35,7 +35,6 @@
         #map { height: 220px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #4b5563; }
         .btn-submit { width: 100%; background: #2563eb; color: white; border: none; padding: 13px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; margin-top: 10px; }
 
-        /* Minimal Tracking Panel for Passenger */
         .tracking-panel { display: none; margin-top: 15px; background: #111827; padding: 12px; border-radius: 12px; border: 1px solid #374151; text-align: center; }
         body.light-mode .tracking-panel { background: #f8fafc; border-color: #cbd5e1; }
         .tracking-status { font-weight: bold; font-size: 14px; color: #3b82f6; margin-bottom: 5px; }
@@ -62,7 +61,6 @@
     <div id="map"></div>
     <button class="btn-submit" id="submitBtn" onclick="sendHouseLocation()">تأكيد وإرسال للسائق 🚀</button>
 
-    <!-- شاشة تتبع مبسطة للراكب -->
     <div class="tracking-panel" id="trackingPanel">
         <div class="tracking-status" id="trackingStatus">🚘 جاري تتبع موقع السائق...</div>
         <div class="eta-badge" id="etaBadge">المسافة: -- كم | الوقت التقديري: -- دقيقة</div>
@@ -100,17 +98,11 @@
     let searchTimeout = null;
     let driverLiveMarker = null;
 
-    function isNightTime() {
-        const hour = new Date().getHours();
-        return hour < 6 || hour >= 18;
-    }
-    if (!isNightTime()) {
-        document.body.classList.add('light-mode');
-    }
-
     const map = L.map('map').setView([lat, lng], 13);
-    const tileUrl = isNightTime() ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    L.tileLayer(tileUrl).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
 
     const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
 
@@ -182,13 +174,12 @@
     function calculateAndShowETA() {
         if (!currentDriverLat || !currentDriverLng) return;
         const dist = calculateDistance(lat, lng, currentDriverLat, currentDriverLng);
-        const estimatedMinutes = Math.round((dist / 30) * 60); // تقدير السرعة المتوسطة 30 كم/س
+        const estimatedMinutes = Math.round((dist / 30) * 60);
         
         document.getElementById('trackingPanel').style.display = 'block';
         document.getElementById('etaBadge').innerText = `المسافة: ${dist.toFixed(2)} كم | الوقت التقديري للوصول: ${estimatedMinutes <= 1 ? 'أقل من دقيقة' : estimatedMinutes + ' دقيقة'}`;
     }
 
-    // متابعة موقع السائق الخاص بهذه الغرفة
     if (roomId) {
         db.ref(`rooms/${roomId}/driver_location`).on('value', (snapshot) => {
             const data = snapshot.val();
