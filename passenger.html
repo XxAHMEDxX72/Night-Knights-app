@@ -19,9 +19,33 @@
         input { width: 100%; padding: 11px; background: #374151; border: 1px solid #4b5563; border-radius: 8px; color: white; font-size: 14px; outline: none; }
         
         .search-wrapper { position: relative; margin-bottom: 10px; }
-        .suggestions-list { position: absolute; top: 100%; left: 0; right: 0; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; max-height: 180px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); display: none; }
-        .suggestion-item { padding: 10px; border-bottom: 1px solid #374151; font-size: 12px; cursor: pointer; color: #e5e7eb; }
-        .suggestion-item:hover { background: #374151; color: #60a5fa; }
+        
+        /* تنسيقات قائمة اقتراحات جوجل ماب الرسمية لتتناسب مع الثيم الداكن */
+        .pac-container {
+            background-color: #1f2937 !important;
+            border: 1px solid #4b5563 !important;
+            border-radius: 8px !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+            font-family: system-ui, -apple-system, sans-serif !important;
+            z-index: 9999 !important;
+        }
+        .pac-item {
+            color: #e5e7eb !important;
+            border-top: 1px solid #374151 !important;
+            padding: 8px 10px !important;
+            cursor: pointer;
+        }
+        .pac-item:hover {
+            background-color: #374151 !important;
+        }
+        .pac-item-query {
+            color: #60a5fa !important;
+            font-size: 13px !important;
+        }
+        .pac-matched {
+            color: #38bdf8 !important;
+        }
+
         .btn-gps { background: #10b981; color: white; border: none; padding: 9px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 10px; }
         #map { height: 220px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #4b5563; }
         .btn-submit { width: 100%; background: #2563eb; color: white; border: none; padding: 13px; border-radius: 10px; font-weight: bold; font-size: 15px; cursor: pointer; margin-top: 10px; }
@@ -35,18 +59,22 @@
     <label>اسم الراكب:</label>
     <input type="text" id="passengerName" placeholder="اكتب اسمك..." required>
     
-    <label>ابحث عن الشارع / منطقة / محطة (في مصر):</label>
+    <label>ابحث عن الشارع / منطقة / محطة عبر Google Maps:</label>
     <div class="search-wrapper">
-        <input type="text" id="searchInput" placeholder="مثال: محطة مترو فيصل..." oninput="handleSearchInput()">
-        <div class="suggestions-list" id="suggestionsList"></div>
+        <input type="text" id="searchInput" placeholder="اكتب العنوان هنا لتظهر اقتراحات جوجل...">
     </div>
     
     <button class="btn-gps" onclick="getCurrentLocation()">📍 تحديث موقعي الحالي بالـ GPS</button>
     <div id="map"></div>
     <button class="btn-submit" onclick="sendHouseLocation()">تأكيد وإرسال للسائق 🚀</button>
 </div>
+
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Google Maps JavaScript API (Places Library) -->
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAnKuu5azHrQ0ih17jhHyUg4X3eNVnMQh8&libraries=places&language=ar&region=EG"></script>
+
 <script>
     const firebaseConfig = {
         apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
@@ -60,7 +88,6 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('room');
     if (!roomId) {
@@ -70,15 +97,13 @@
     } else {
         document.getElementById('roomBadge').innerText = `انضمام للرحلة رقم: ${roomId}`;
     }
-
+    
     let lat = 30.0444;
     let lng = 31.2357;
-    let searchTimeout = null;
     let driverLiveMarker = null;
-
     const map = L.map('map').setView([lat, lng], 13);
     
-    // خريطة جوجل الرسمية (Google Maps Tile)
+    // طبقة الخريطة المباشرة
     L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
         maxZoom: 20,
         attribution: '© Google Maps'
@@ -111,6 +136,28 @@
         }
     }
 
+    // تفعيل محرك بحث Google Places Autocomplete الرسمية
+    function initGooglePlacesSearch() {
+        const input = document.getElementById('searchInput');
+        if (typeof google !== 'undefined' && google.maps && google.maps.places) {
+            const autocomplete = new google.maps.places.Autocomplete(input, {
+                componentRestrictions: { country: "eg" }, // تقييد البحث داخل مصر
+                fields: ["geometry", "name", "formatted_address"]
+            });
+
+            autocomplete.addListener('place_changed', () => {
+                const place = autocomplete.getPlace();
+                if (!place.geometry || !place.geometry.location) {
+                    return;
+                }
+
+                const newLat = place.geometry.location.lat();
+                const newLng = place.geometry.location.lng();
+                updateMarker(newLat, newLng);
+            });
+        }
+    }
+
     if (roomId) {
         db.ref(`rooms/${roomId}/driver_location`).on('value', (snapshot) => {
             const data = snapshot.val();
@@ -130,41 +177,6 @@
         });
     }
 
-    function handleSearchInput() {
-        clearTimeout(searchTimeout);
-        const query = document.getElementById('searchInput').value.trim();
-        const list = document.getElementById('suggestionsList');
-        if (query.length < 3) {
-            list.style.display = 'none';
-            return;
-        }
-        searchTimeout = setTimeout(async () => {
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=eg&q=${encodeURIComponent(query)}`);
-                const data = await res.json();
-                list.innerHTML = '';
-                if (data && data.length > 0) {
-                    list.style.display = 'block';
-                    data.slice(0, 5).forEach(item => {
-                        const div = document.createElement('div');
-                        div.className = 'suggestion-item';
-                        div.innerText = item.display_name;
-                        div.onclick = () => {
-                            updateMarker(parseFloat(item.lat), parseFloat(item.lon));
-                            document.getElementById('searchInput').value = item.display_name.split(',')[0];
-                            list.style.display = 'none';
-                        };
-                        list.appendChild(div);
-                    });
-                } else {
-                    list.style.display = 'none';
-                }
-            } catch (e) {
-                list.style.display = 'none';
-            }
-        }, 300);
-    }
-
     function sendHouseLocation() {
         if (!roomId) {
             alert('لا يمكن إرسال الموقع بدون رمز رحلة صحيح!');
@@ -175,7 +187,6 @@
             alert('برجاء كتابة اسمك أولاً!');
             return;
         }
-
         db.ref(`rooms/${roomId}/rides`).push({
             name: name,
             lat: lat,
@@ -190,7 +201,10 @@
         });
     }
 
-    window.onload = getCurrentLocation;
+    window.onload = () => {
+        getCurrentLocation();
+        initGooglePlacesSearch();
+    };
 </script>
 </body>
 </html>

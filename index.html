@@ -59,7 +59,7 @@
         
         .leaflet-routing-container { display: none !important; }
         .car-marker-icon {
-            transition: transform 0.8s linear, left 1s linear, top 1s linear;
+            transition: transform 0.5s ease-out;
         }
     </style>
 </head>
@@ -87,7 +87,7 @@
 <div class="qr-card" id="qrContainer">
     <h2>امسح الـ QR للإنضمام لرحلة السائق 📲</h2>
     <div id="qrcode"></div>
-    <p style="font-size: 12px; color: #94a3b8;">خّلّي الركاب يمسحوا الكود لتحديد منزلهم لهذه الرحلة تحديداً</p>
+    <p style="font-size: 12px; color: #94a3b8;">خلّي الركاب يمسحوا الكود لتحديد منزلهم لهذه الرحلة تحديداً</p>
 </div>
 <div class="main-layout" id="mainLayout">
     <div class="map-container" id="mapWrapper" style="display: none;">
@@ -100,6 +100,7 @@
         </div>
     </div>
 </div>
+
 <!-- JS Libraries -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
@@ -132,10 +133,12 @@
     document.getElementById('roomIdInput').value = currentRoomId;
     let driverLat = 30.0444;
     let driverLng = 31.2357;
+    let lastRoutedLat = null;
+    let lastRoutedLng = null;
     let map, routingControl, driverMarker, tileLayer;
     let passengers = [];
     let isTripStarted = false;
-    let trackingIntervalId = null;
+    let watchPositionId = null;
     let ridesListener = null;
     let tripStartTime = null;
 
@@ -166,15 +169,16 @@
 
     function initMap() {
         if (map) return;
-        map = L.map('driverMap').setView([driverLat, driverLng], 14);
+        map = L.map('driverMap').setView([driverLat, driverLng], 15);
         
-        // خريطة جوجل الرسمية (Google Maps Tile)
-        tileLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        // أحدث روابط Google Maps Tiles الرسمية بالدقة العالية
+        tileLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
             maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
             attribution: '© Google Maps'
         }).addTo(map);
         
-        driverMarker = L.marker([driverLat, driverLng], { icon: carIcon }).addTo(map).bindPopup("موقع السيارة الحالي 🚐").openPopup();
+        driverMarker = L.marker([driverLat, driverLng], { icon: carIcon }).addTo(map).bindPopup("موقع السيارة الحالي 🚐");
     }
 
     function toggleTrip() {
@@ -193,7 +197,7 @@
             initMap();
             setTimeout(() => { map.invalidateSize(); }, 300);
             startLiveTracking();
-            updateRoute();
+            updateRoute(true);
         } else {
             saveTripToFirebase();
             qrContainer.style.display = 'block';
@@ -202,6 +206,10 @@
             btn.innerText = '🚀 بدء الرحلة وعرض الخريطة';
             btn.style.background = '#2563eb';
             stopLiveTracking();
+            if (routingControl) {
+                map.removeControl(routingControl);
+                routingControl = null;
+            }
             currentRoomId = generateUniqueRoomId();
             document.getElementById('roomIdInput').value = currentRoomId;
             generateRoomQR();
@@ -220,7 +228,6 @@
             passengersNames: passengers.map(p => p.name),
             timestamp: Date.now()
         };
-        
         db.ref('trip_history').push(historyData);
     }
 
@@ -231,62 +238,50 @@
 
     function moveMarkerSmoothly(targetLat, targetLng) {
         if (!driverMarker) return;
-        const startLatLng = driverMarker.getLatLng();
-        const startLat = startLatLng.lat;
-        const startLng = startLatLng.lng;
-        
-        let startTime = null;
-        const duration = 900;
-        function animate(time) {
-            if (!startTime) startTime = time;
-            const progress = Math.min((time - startTime) / duration, 1);
-            const currentLat = startLat + (targetLat - startLat) * progress;
-            const currentLng = startLng + (targetLng - startLng) * progress;
-            
-            driverMarker.setLatLng([currentLat, currentLng]);
-            if (progress < 1) {
-                requestAnimationFrame(animate);
-            }
-        }
-        requestAnimationFrame(animate);
+        driverMarker.setLatLng([targetLat, targetLng]);
     }
 
-    function fetchAndUpdatePosition() {
-        if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition((pos) => {
-                driverLat = pos.coords.latitude;
-                driverLng = pos.coords.longitude;
-                
-                db.ref(`rooms/${currentRoomId}/driver_location`).set({
-                    lat: driverLat,
-                    lng: driverLng,
-                    timestamp: Date.now()
-                });
-                if (driverMarker) moveMarkerSmoothly(driverLat, driverLng);
-                
-                recalculateDistances();
-                if (isTripStarted) updateRoute();
-            }, (err) => {
-                console.error("خطأ الـ GPS:", err.message);
-            }, { enableHighAccuracy: true, maximumAge: 0, timeout: 1000 });
+    function handlePositionUpdate(pos) {
+        driverLat = pos.coords.latitude;
+        driverLng = pos.coords.longitude;
+        
+        db.ref(`rooms/${currentRoomId}/driver_location`).set({
+            lat: driverLat,
+            lng: driverLng,
+            timestamp: Date.now()
+        });
+
+        if (driverMarker) moveMarkerSmoothly(driverLat, driverLng);
+        recalculateDistances();
+
+        if (isTripStarted) {
+            // عدم تحديث المسار إلا إذا تحرك السائق أكثر من 15 متر لتفادي الرعشة
+            if (!lastRoutedLat || calculateDistance(lastRoutedLat, lastRoutedLng, driverLat, driverLng) > 0.015) {
+                updateRoute(false);
+            }
         }
     }
 
     function startLiveTracking() {
-        if (trackingIntervalId !== null) return;
-        fetchAndUpdatePosition();
-        trackingIntervalId = setInterval(fetchAndUpdatePosition, 1000);
-        const gpsBtn = document.getElementById('gpsBtn');
-        if (gpsBtn) {
-            gpsBtn.innerText = '🟢 التتبع المباشر يعمل';
-            gpsBtn.style.background = '#059669';
+        if (watchPositionId !== null) return;
+        if ("geolocation" in navigator) {
+            watchPositionId = navigator.geolocation.watchPosition(
+                handlePositionUpdate,
+                (err) => { console.error("خطأ الـ GPS:", err.message); },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+            );
+            const gpsBtn = document.getElementById('gpsBtn');
+            if (gpsBtn) {
+                gpsBtn.innerText = '🟢 التتبع المباشر يعمل';
+                gpsBtn.style.background = '#059669';
+            }
         }
     }
 
     function stopLiveTracking() {
-        if (trackingIntervalId !== null) {
-            clearInterval(trackingIntervalId);
-            trackingIntervalId = null;
+        if (watchPositionId !== null) {
+            navigator.geolocation.clearWatch(watchPositionId);
+            watchPositionId = null;
             const gpsBtn = document.getElementById('gpsBtn');
             if (gpsBtn) {
                 gpsBtn.innerText = '📍 تفعيل التتبع المباشر (GPS)';
@@ -296,7 +291,7 @@
     }
 
     function toggleLiveTracking() {
-        if (trackingIntervalId === null) startLiveTracking();
+        if (watchPositionId === null) startLiveTracking();
         else stopLiveTracking();
     }
 
@@ -321,7 +316,7 @@
         if (passengers.length === 0) return;
         passengers.sort((a, b) => a.distance - b.distance);
         renderPassengers();
-        if (isTripStarted) updateRoute();
+        if (isTripStarted) updateRoute(true);
     }
 
     function toggleTheme() {
@@ -336,6 +331,10 @@
             if (!data) {
                 passengers = [];
                 renderPassengers();
+                if (routingControl) {
+                    map.removeControl(routingControl);
+                    routingControl = null;
+                }
                 return;
             }
             let newPassengers = [];
@@ -354,7 +353,7 @@
                 });
             }
             renderPassengers();
-            if (isTripStarted) updateRoute();
+            if (isTripStarted) updateRoute(true);
         });
     }
 
@@ -392,44 +391,61 @@
         passengers[index] = passengers[newIndex];
         passengers[newIndex] = temp;
         renderPassengers();
-        if (isTripStarted) updateRoute();
+        if (isTripStarted) updateRoute(true);
     }
 
     function deletePassenger(id) {
         db.ref(`rooms/${currentRoomId}/rides/${id}`).remove();
         passengers = passengers.filter(p => p.id !== id);
         renderPassengers();
-        if (isTripStarted) updateRoute();
+        if (isTripStarted) updateRoute(true);
     }
 
-    function updateRoute() {
+    // تحديث المسار بسلاسة وبدون إعادة إنشاء الخريطة لمنع الرعشة
+    function updateRoute(forceRecreate = false) {
         if (!map || passengers.length === 0) return;
         const target = passengers[0];
-        if (routingControl) map.removeControl(routingControl);
-        
-        routingControl = L.Routing.control({
-            waypoints: [
-                L.latLng(driverLat, driverLng),
-                L.latLng(target.lat, target.lng)
-            ],
-            router: L.Routing.osrmv1({
-                serviceUrl: 'https://router.project-osrm.org/route/v1'
-            }),
-            lineOptions: { styles: [{ color: '#3b82f6', weight: 6 }] },
-            addWaypoints: false,
-            draggableWaypoints: false,
-            fitSelectedRoutes: false,
-            createMarker: function(i, wp) {
-                return L.marker(wp.latLng, { icon: i === 0 ? carIcon : L.Icon.Default.prototype }).bindPopup(i === 0 ? "موقع السيارة الحقيقي" : `بيت الراكب: ${target.name}`);
-            }
-        }).addTo(map);
+
+        const startPt = L.latLng(driverLat, driverLng);
+        const endPt = L.latLng(target.lat, target.lng);
+
+        if (routingControl && !forceRecreate) {
+            // تحديث النقاط مباشرة بدلاً من مسح الكنترول بالكامل لإنهاء الرعشة
+            routingControl.setWaypoints([startPt, endPt]);
+        } else {
+            if (routingControl) map.removeControl(routingControl);
+            
+            routingControl = L.Routing.control({
+                waypoints: [startPt, endPt],
+                router: L.Routing.osrmv1({
+                    serviceUrl: 'https://router.project-osrm.org/route/v1'
+                }),
+                lineOptions: { 
+                    styles: [{ color: '#2563eb', weight: 6, opacity: 0.8 }] 
+                },
+                addWaypoints: false,
+                draggableWaypoints: false,
+                fitSelectedRoutes: false,
+                show: false,
+                createMarker: function(i, wp) {
+                    if (i === 0) return null; // عدم تكرار ماركر السيارة
+                    return L.marker(wp.latLng).bindPopup(`بيت الراكب: ${target.name}`);
+                }
+            }).addTo(map);
+        }
+
+        lastRoutedLat = driverLat;
+        lastRoutedLng = driverLng;
     }
 
     function clearAllRides() {
         if(confirm(`هل تريد مسح جميع ركاب الغرفة (${currentRoomId})؟`)) {
             db.ref(`rooms/${currentRoomId}/rides`).remove();
             passengers = [];
-            if (routingControl) map.removeControl(routingControl);
+            if (routingControl) {
+                map.removeControl(routingControl);
+                routingControl = null;
+            }
             renderPassengers();
         }
     }
