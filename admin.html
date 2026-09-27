@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة التحكم - سجل الرحلات</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        body { background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; min-height: 100vh; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 15px 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        h2 { margin: 0; font-size: 20px; }
+
+        .btn-refresh { background: #0284c7; border: none; color: white; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-clear-all { background: #ef4444; border: none; color: white; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+
+        .table-wrapper { overflow-x: auto; background: #1e293b; border-radius: 12px; border: 1px solid #334155; }
+        table { width: 100%; border-collapse: collapse; text-align: right; }
+        th, td { padding: 12px 15px; border-bottom: 1px solid #334155; font-size: 14px; }
+        th { background: #334155; color: #38bdf8; font-weight: bold; }
+        tr:hover { background: #131e32; }
+
+        .passengers-tag { background: #334155; padding: 3px 8px; border-radius: 6px; font-size: 12px; display: inline-block; margin: 2px; }
+        .badge { background: #10b981; color: white; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>📜 سجل الرحلات المنتهية (المشرفين)</h2>
+    <div>
+        <button class="btn-refresh" onclick="loadHistory()">🔄 تحديث البيانات</button>
+        <button class="btn-clear-all" onclick="clearAllHistory()">🗑️ مسح السجل بالكامل</button>
+    </div>
+</div>
+
+<div class="table-wrapper">
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>رمز الرحلة / الغرفة</th>
+                <th>لوحة السيارة</th>
+                <th>عدد الركاب</th>
+                <th>أسماء الركاب</th>
+                <th>تاريخ وبداية الرحلة</th>
+                <th>تاريخ ونهاية الرحلة</th>
+            </tr>
+        </thead>
+        <tbody id="historyTableBody">
+            <tr><td colspan="7" style="text-align:center; color:#64748b;">جاري تحميل سجل الرحلات...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyA87OpSlrcoOt_xo3wi492GME0HuJk8E_4",
+        authDomain: "black-knights-5c5a8.firebaseapp.com",
+        databaseURL: "https://black-knights-5c5a8-default-rtdb.firebaseio.com",
+        projectId: "black-knights-5c5a8",
+        storageBucket: "black-knights-5c5a8.firebasestorage.app",
+        messagingSenderId: "699141823797",
+        appId: "1:699141823797:web:11768011079d9701f0807c",
+        measurementId: "G-JX743D3NH8"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    function loadHistory() {
+        const tbody = document.getElementById('historyTableBody');
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b;">جاري تحميل البيانات...</td></tr>';
+
+        db.ref('trip_history').once('value', (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">لا يوجد أي رحلات مسجلة حتى الآن</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            let index = 1;
+            const tripsArray = [];
+
+            for (let id in data) {
+                tripsArray.unshift({ id, ...data[id] });
+            }
+
+            tripsArray.forEach((t) => {
+                const namesHtml = (t.passengersNames || []).map(n => `<span class="passengers-tag">${n}</span>`).join(' ');
+                tbody.innerHTML += `
+                    <tr>
+                        <td><b>${index++}</b></td>
+                        <td><code>${t.roomId}</code></td>
+                        <td><span class="badge">${t.plateNumber || 'غير محدد'}</span></td>
+                        <td>${t.passengersCount || 0}</td>
+                        <td>${namesHtml || 'لا يوجد'}</td>
+                        <td>${t.startTime || '-'}</td>
+                        <td>${t.endTime || '-'}</td>
+                    </tr>
+                `;
+            });
+        });
+    }
+
+    function clearAllHistory() {
+        if (confirm("هل أنت تأكد من رغبتك في مسح كافة سجلات الرحلات من السيرفر؟")) {
+            db.ref('trip_history').remove().then(() => {
+                loadHistory();
+            });
+        }
+    }
+
+    window.onload = loadHistory;
+</script>
+</body>
+</html>
