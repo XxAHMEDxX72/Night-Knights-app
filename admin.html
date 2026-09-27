@@ -3,55 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لوحة التحكم - سجل الرحلات</title>
-    <!-- Firebase SDK -->
+    <title>لوحة المشرفين - متابعة الرحلات</title>
+    <!-- Firebase JS SDK (v9 compat) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <style>
-        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-        body { background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; min-height: 100vh; }
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; transition: background 0.3s, color 0.3s; }
         
-        .header { display: flex; justify-content: space-between; align-items: center; background: #1e293b; padding: 15px 20px; border-radius: 12px; border: 1px solid #334155; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
-        h2 { margin: 0; font-size: 20px; }
-
-        .btn-refresh { background: #0284c7; border: none; color: white; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        .btn-clear-all { background: #ef4444; border: none; color: white; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-
-        .table-wrapper { overflow-x: auto; background: #1e293b; border-radius: 12px; border: 1px solid #334155; }
+        body { background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; min-height: 100vh; }
+        body.light-mode { background: #f1f5f9; color: #0f172a; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
+        h1 { margin: 0; font-size: 22px; }
+        
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn { border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-refresh { background: #0284c7; }
+        .btn-clear { background: #ef4444; }
+        .btn-back { background: #475569; }
+        .btn-theme { background: #64748b; }
+        
+        /* أزرار الفلترة */
+        .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; background: #1e293b; padding: 8px; border-radius: 12px; border: 1px solid #334155; }
+        body.light-mode .filter-bar { background: #ffffff; border-color: #cbd5e1; }
+        
+        .filter-btn { flex: 1; padding: 10px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; background: transparent; color: #94a3b8; font-size: 14px; text-align: center; }
+        .filter-btn.active { background: #2563eb; color: white; }
+        body.light-mode .filter-btn.active { background: #2563eb; color: white; }
+        
+        .table-container { background: #1e293b; border: 1px solid #334155; border-radius: 16px; overflow-x: auto; }
+        body.light-mode .table-container { background: #ffffff; border-color: #cbd5e1; }
+        
         table { width: 100%; border-collapse: collapse; text-align: right; }
-        th, td { padding: 12px 15px; border-bottom: 1px solid #334155; font-size: 14px; }
-        th { background: #334155; color: #38bdf8; font-weight: bold; }
-        tr:hover { background: #131e32; }
-
-        .passengers-tag { background: #334155; padding: 3px 8px; border-radius: 6px; font-size: 12px; display: inline-block; margin: 2px; }
-        .badge { background: #10b981; color: white; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+        th, td { padding: 14px 16px; border-bottom: 1px solid #334155; }
+        body.light-mode th, body.light-mode td { border-bottom-color: #e2e8f0; }
+        th { background: #0f172a; color: #94a3b8; font-size: 14px; white-space: nowrap; }
+        body.light-mode th { background: #f8fafc; color: #475569; }
+        
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; display: inline-block; }
+        .badge-active { background: #065f46; color: #34d399; border: 1px solid #059669; }
+        .badge-ended { background: #7f1d1d; color: #fca5a5; border: 1px solid #dc2626; }
+        
+        .empty-msg { text-align: center; padding: 40px; color: #64748b; }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <h2>📜 سجل الرحلات المنتهية (المشرفين)</h2>
-    <div>
-        <button class="btn-refresh" onclick="loadHistory()">🔄 تحديث البيانات</button>
-        <button class="btn-clear-all" onclick="clearAllHistory()">🗑️ مسح السجل بالكامل</button>
+    <h1>🛡️ لوحة المشرفين (سجل ومتابعة الرحلات)</h1>
+    <div class="controls">
+        <button class="btn btn-refresh" onclick="loadAllTrips()">🔄 تحديث البيانات</button>
+        <button class="btn btn-theme" onclick="toggleTheme()">🌗 وضع ليلي/نهاري</button>
+        <button class="btn btn-clear" onclick="clearHistory()">🗑️ مسح السجل بالكامل</button>
+        <a href="index.html" class="btn btn-back">🔙 شاشة السائق</a>
     </div>
 </div>
 
-<div class="table-wrapper">
+<!-- شريط الفلترة -->
+<div class="filter-bar">
+    <button class="filter-btn active" id="btnAll" onclick="setFilter('all')">📋 جميع الرحلات (<span id="countAll">0</span>)</button>
+    <button class="filter-btn" id="btnActive" onclick="setFilter('active')">🟢 الجارية حالياً (<span id="countActive">0</span>)</button>
+    <button class="filter-btn" id="btnEnded" onclick="setFilter('ended')">🔴 المنتهية (<span id="countEnded">0</span>)</button>
+</div>
+
+<div class="table-container">
     <table>
         <thead>
             <tr>
                 <th>#</th>
+                <th>حالة الرحلة</th>
                 <th>رمز الرحلة / الغرفة</th>
                 <th>لوحة السيارة</th>
                 <th>عدد الركاب</th>
                 <th>أسماء الركاب</th>
-                <th>تاريخ وبداية الرحلة</th>
-                <th>تاريخ ونهاية الرحلة</th>
+                <th>وقت البداية</th>
+                <th>وقت النهاية</th>
             </tr>
         </thead>
-        <tbody id="historyTableBody">
-            <tr><td colspan="7" style="text-align:center; color:#64748b;">جاري تحميل سجل الرحلات...</td></tr>
+        <tbody id="tripsTableBody">
+            <tr>
+                <td colspan="8" class="empty-msg">جاري تحميل البيانات...</td>
+            </tr>
         </tbody>
     </table>
 </div>
@@ -70,51 +102,143 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    function loadHistory() {
-        const tbody = document.getElementById('historyTableBody');
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b;">جاري تحميل البيانات...</td></tr>';
+    let allTripsList = [];
+    let currentFilter = 'all';
 
-        db.ref('trip_history').once('value', (snapshot) => {
-            const data = snapshot.val();
-            if (!data) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">لا يوجد أي رحلات مسجلة حتى الآن</td></tr>';
-                return;
+    function toggleTheme() {
+        document.body.classList.toggle('light-mode');
+    }
+
+    function setFilter(filterType) {
+        currentFilter = filterType;
+        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+        if (filterType === 'all') document.getElementById('btnAll').classList.add('active');
+        if (filterType === 'active') document.getElementById('btnActive').classList.add('active');
+        if (filterType === 'ended') document.getElementById('btnEnded').classList.add('active');
+        renderTrips();
+    }
+
+    function loadAllTrips() {
+        allTripsList = [];
+        
+        // 1. جلب الرحلات المنتهية من السجل
+        db.ref('trip_history').once('value').then(historySnap => {
+            const historyData = historySnap.val();
+            if (historyData) {
+                for (let key in historyData) {
+                    allTripsList.push({
+                        ...historyData[key],
+                        status: 'ended',
+                        id: key
+                    });
+                }
             }
 
-            tbody.innerHTML = '';
-            let index = 1;
-            const tripsArray = [];
-
-            for (let id in data) {
-                tripsArray.unshift({ id, ...data[id] });
+            // 2. جلب الغرف الجارية حالياً
+            return db.ref('rooms').once('value');
+        }).then(roomsSnap => {
+            const roomsData = roomsSnap.val();
+            if (roomsData) {
+                for (let roomId in roomsData) {
+                    const room = roomsData[roomId];
+                    // التأكد أن الغرفة لم تُسجل كمنتهية بعد
+                    const isAlreadyInHistory = allTripsList.some(t => t.roomId === roomId && t.status === 'ended');
+                    
+                    if (!isAlreadyInHistory) {
+                        let passengersNames = [];
+                        let passengersCount = 0;
+                        if (room.rides) {
+                            for (let rId in room.rides) {
+                                passengersCount++;
+                                if (room.rides[rId].name) passengersNames.push(room.rides[rId].name);
+                            }
+                        }
+                        
+                        allTripsList.push({
+                            roomId: roomId,
+                            plateNumber: 'جاري التحديد...',
+                            passengersCount: passengersCount,
+                            passengersNames: passengersNames,
+                            startTime: 'نشطة حالياً',
+                            endTime: '-',
+                            status: 'active',
+                            timestamp: room.driver_location ? room.driver_location.timestamp || Date.now() : Date.now()
+                        });
+                    }
+                }
             }
 
-            tripsArray.forEach((t) => {
-                const namesHtml = (t.passengersNames || []).map(n => `<span class="passengers-tag">${n}</span>`).join(' ');
-                tbody.innerHTML += `
-                    <tr>
-                        <td><b>${index++}</b></td>
-                        <td><code>${t.roomId}</code></td>
-                        <td><span class="badge">${t.plateNumber || 'غير محدد'}</span></td>
-                        <td>${t.passengersCount || 0}</td>
-                        <td>${namesHtml || 'لا يوجد'}</td>
-                        <td>${t.startTime || '-'}</td>
-                        <td>${t.endTime || '-'}</td>
-                    </tr>
-                `;
-            });
+            // ترتيب الرحلات من الأحدث للأقدم
+            allTripsList.sort((a, b) => b.timestamp - a.timestamp);
+            updateCounters();
+            renderTrips();
+        }).catch(err => {
+            console.error("خطأ في جلب البيانات:", err);
         });
     }
 
-    function clearAllHistory() {
-        if (confirm("هل أنت تأكد من رغبتك في مسح كافة سجلات الرحلات من السيرفر؟")) {
+    function updateCounters() {
+        const total = allTripsList.length;
+        const active = allTripsList.filter(t => t.status === 'active').length;
+        const ended = allTripsList.filter(t => t.status === 'ended').length;
+
+        document.getElementById('countAll').innerText = total;
+        document.getElementById('countActive').innerText = active;
+        document.getElementById('countEnded').innerText = ended;
+    }
+
+    function renderTrips() {
+        const tbody = document.getElementById('tripsTableBody');
+        tbody.innerHTML = '';
+
+        let filtered = allTripsList;
+        if (currentFilter === 'active') filtered = allTripsList.filter(t => t.status === 'active');
+        if (currentFilter === 'ended') filtered = allTripsList.filter(t => t.status === 'ended');
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="empty-msg">لا توجد رحلات تعرض حالياً في هذا القسم</td></tr>`;
+            return;
+        }
+
+        filtered.forEach((trip, index) => {
+            const names = trip.passengersNames && trip.passengersNames.length > 0 
+                ? trip.passengersNames.join('، ') 
+                : 'بدون ركاب';
+
+            const statusBadge = trip.status === 'active' 
+                ? '<span class="badge badge-active">🟢 جارية</span>' 
+                : '<span class="badge badge-ended">🔴 منتهية</span>';
+
+            tbody.innerHTML += `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td>${statusBadge}</td>
+                    <td><strong>${trip.roomId}</strong></td>
+                    <td>${trip.plateNumber || 'غير محدد'}</td>
+                    <td>${trip.passengersCount || 0}</td>
+                    <td>${names}</td>
+                    <td>${trip.startTime || '-'}</td>
+                    <td>${trip.endTime || '-'}</td>
+                </tr>
+            `;
+        });
+    }
+
+    function clearHistory() {
+        if (confirm("هل أنت تأكد من مسح جميع سجلات الرحلات المنتهية؟")) {
             db.ref('trip_history').remove().then(() => {
-                loadHistory();
+                alert("تم مسح السجل بنجاح");
+                loadAllTrips();
             });
         }
     }
 
-    window.onload = loadHistory;
+    // التحميل التلقائي والاستماع لأي تحديثات مباشرة
+    window.onload = () => {
+        loadAllTrips();
+        // تحديث مستمر عند حدوث أي تغيير في داتا الغرف
+        db.ref('rooms').on('value', () => loadAllTrips());
+    };
 </script>
 </body>
 </html>

@@ -27,13 +27,14 @@
         body.light-mode .plate-input { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
         
         .header-actions { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
-        .btn { border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; font-size: 14px; flex: 1; min-width: 140px; }
+        .btn { border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; font-size: 14px; flex: 1; min-width: 140px; text-align: center; text-decoration: none; }
         .btn-gps { background: #10b981; }
         .btn-start { background: #2563eb; }
         .btn-toggle-qr { background: #0284c7; }
         .btn-clear { background: #ef4444; }
         .btn-optimize { background: #8b5cf6; }
         .btn-theme { background: #64748b; }
+        .btn-admin { background: #e11d48; }
         
         .main-layout { display: flex; flex-direction: column; gap: 15px; flex: 1; }
         @media (min-width: 900px) {
@@ -82,6 +83,7 @@
     <button class="btn btn-optimize" onclick="optimizeRoute()">🪄 ترتيب الركاب تلقائيًا</button>
     <button class="btn btn-toggle-qr" onclick="toggleQR()">📱 إظهار / إخفاء الـ QR</button>
     <button class="btn btn-theme" onclick="toggleTheme()">🌗 وضع ليلي/نهاري</button>
+    <a href="admin.html" class="btn btn-admin">🛡️ لوحة المشرفين</a>
     <button class="btn btn-clear" onclick="clearAllRides()">🗑️ مسح ركاب هذه الغرفة</button>
 </div>
 <div class="qr-card" id="qrContainer">
@@ -230,6 +232,7 @@
         qr.style.display = qr.style.display === 'none' ? 'block' : 'none';
     }
 
+    // الحركة السلسة للأيقونة بدون عمل centering إجباري للخريطة
     function moveMarkerSmoothly(targetLat, targetLng) {
         if (!driverMarker) return;
         const startLatLng = driverMarker.getLatLng();
@@ -245,8 +248,8 @@
             const currentLat = startLat + (targetLat - startLat) * progress;
             const currentLng = startLng + (targetLng - startLng) * progress;
             
+            // تحديث مكان الأيقونة فقط
             driverMarker.setLatLng([currentLat, currentLng]);
-            if (map) map.panTo([currentLat, currentLng]);
 
             if (progress < 1) {
                 requestAnimationFrame(animate);
