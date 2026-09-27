@@ -186,19 +186,13 @@
         }
     }
 
-    function getTileUrl() {
-        return document.body.classList.contains('light-mode') 
-            ? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-            : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-    }
-
     function initMap() {
         if (map) return;
         map = L.map('driverMap').setView([driverLat, driverLng], 14);
         
         tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
-            attribution: '© OpenStreetMap'
+            attribution: '© OpenStreetMap contributors'
         }).addTo(map);
         
         driverMarker = L.marker([driverLat, driverLng], { icon: carIcon }).addTo(map).bindPopup("موقع السيارة الحالي 🚖").openPopup();
@@ -464,12 +458,19 @@
         if (!map || passengers.length === 0) return;
         const target = passengers[0];
         if (routingControl) map.removeControl(routingControl);
+        
         routingControl = L.Routing.control({
             waypoints: [
                 L.latLng(driverLat, driverLng),
                 L.latLng(target.lat, target.lng)
             ],
-            lineOptions: { styles: [{ color: '#2563eb', weight: 6 }] },
+            router: L.Routing.osrmv1({
+                serviceUrl: 'https://router.project-osrm.org/route/v1'
+            }),
+            lineOptions: { styles: [{ color: '#3b82f6', weight: 6 }] },
+            addWaypoints: false,
+            draggableWaypoints: false,
+            fitSelectedRoutes: false,
             createMarker: function(i, wp) {
                 return L.marker(wp.latLng, { icon: i === 0 ? carIcon : L.Icon.Default.prototype }).bindPopup(i === 0 ? "موقع السيارة الحقيقي" : `بيت الراكب: ${target.name}`);
             }
